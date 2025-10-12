@@ -634,26 +634,26 @@ def generate_image():
                     'div[data-message-author-role="model"] img'
                 ]
                 
-                google_image_urls = []
+                google_image_url = None
                 for selector in image_selectors:
                     images = page.locator(selector).all()
-                    for img in images:
-                        src = img.get_attribute('src')
-                        if src and ('http' in src) and src not in google_image_urls:
-                            google_image_urls.append(src)
-                    if google_image_urls:
-                        break
+                    if images:
+                        # Get the last image (most recent generated one)
+                        last_img = images[-1]
+                        src = last_img.get_attribute('src')
+                        if src and ('http' in src):
+                            google_image_url = src
+                            break
                 
-                # Download images with authentication and save locally
+                # Download image with authentication and save locally
                 local_image_urls = []
-                if google_image_urls:
-                    for google_url in google_image_urls:
-                        filename = download_authenticated_image(page, google_url)
-                        if filename:
-                            # Get the base URL (uses REPLIT_DOMAINS for public access)
-                            base_url = get_base_url()
-                            local_url = f"{base_url}/images/{filename}"
-                            local_image_urls.append(local_url)
+                if google_image_url:
+                    filename = download_authenticated_image(page, google_image_url)
+                    if filename:
+                        # Get the base URL (uses REPLIT_DOMAINS for public access)
+                        base_url = get_base_url()
+                        local_url = f"{base_url}/images/{filename}"
+                        local_image_urls.append(local_url)
                 
                 if local_image_urls:
                     return jsonify({
@@ -795,26 +795,26 @@ def edit_image():
                     'div[data-message-author-role="model"] img'
                 ]
                 
-                google_result_urls = []
+                google_result_url = None
                 for selector in image_selectors:
                     images = page.locator(selector).all()
-                    for img in images:
-                        src = img.get_attribute('src')
-                        if src and ('http' in src) and src not in google_result_urls:
-                            google_result_urls.append(src)
-                    if google_result_urls:
-                        break
+                    if images:
+                        # Get the last image (most recent edited one)
+                        last_img = images[-1]
+                        src = last_img.get_attribute('src')
+                        if src and ('http' in src):
+                            google_result_url = src
+                            break
                 
-                # Download images with authentication and save locally
+                # Download image with authentication and save locally
                 local_result_urls = []
-                if google_result_urls:
-                    for google_url in google_result_urls:
-                        filename = download_authenticated_image(page, google_url)
-                        if filename:
-                            # Get the base URL (uses REPLIT_DOMAINS for public access)
-                            base_url = get_base_url()
-                            local_url = f"{base_url}/images/{filename}"
-                            local_result_urls.append(local_url)
+                if google_result_url:
+                    filename = download_authenticated_image(page, google_result_url)
+                    if filename:
+                        # Get the base URL (uses REPLIT_DOMAINS for public access)
+                        base_url = get_base_url()
+                        local_url = f"{base_url}/images/{filename}"
+                        local_result_urls.append(local_url)
                 
                 response_selectors = [
                     'div[data-message-author-role="model"]',
