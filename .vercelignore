@@ -1,0 +1,17 @@
+__pycache__
+*.pyc
+.git
+.gitignore
+venv
+env
+ENV
+.vscode
+.idea
+*.log
+playwright-browsers
+.playwright
+static/images
+*.md
+FIXES_SUMMARY.md
+COOKIE_FORMATS.md
+IMAGE_FIX_SOLUTION.md

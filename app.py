@@ -13,19 +13,38 @@ os.environ['PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS'] = 'true'
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SESSION_SECRET', 'dev-secret-key')
 
-STATIC_IMAGES_DIR = Path('static/images')
+# Use /tmp for serverless environments like Vercel, otherwise use static/images
+if os.environ.get('VERCEL'):
+    STATIC_IMAGES_DIR = Path('/tmp/images')
+else:
+    STATIC_IMAGES_DIR = Path('static/images')
+
 STATIC_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 def load_cookies():
-    """Load cookies from account.txt file - supports JSON, Netscape, and name=value formats"""
+    """Load cookies from account.txt file or ACCOUNT_COOKIES env var - supports JSON, Netscape, and name=value formats"""
     cookies = []
-    try:
-        with open('account.txt', 'r') as f:
-            content = f.read()
-            
+    
+    # Try to get cookies from environment variable first (for Vercel deployment)
+    content = os.environ.get('ACCOUNT_COOKIES')
+    
+    # If not in env var, try to read from file
+    if not content:
+        try:
+            with open('account.txt', 'r') as f:
+                content = f.read()
+        except FileNotFoundError:
+            logger.error("account.txt file not found and ACCOUNT_COOKIES env var not set")
+            return []
+        except Exception as e:
+            logger.error(f"Error loading cookies from file: {str(e)}")
+            return []
+    
+    if content:
+        try:
             try:
                 json_data = json.loads(content)
                 if isinstance(json_data, list):
@@ -114,14 +133,13 @@ def load_cookies():
                     })
                     logger.info(f"Loaded simple cookie: {name.strip()}")
         
-        logger.info(f"Total cookies loaded: {len(cookies)}")
-        return cookies
-    except FileNotFoundError:
-        logger.error("account.txt file not found")
-        return []
-    except Exception as e:
-        logger.error(f"Error loading cookies: {str(e)}")
-        return []
+            logger.info(f"Total cookies loaded: {len(cookies)}")
+            return cookies
+        except Exception as e:
+            logger.error(f"Error parsing cookies: {str(e)}")
+            return []
+    
+    return cookies
 
 def setup_browser_context(playwright):
     """Setup browser with cookies"""
