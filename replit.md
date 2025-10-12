@@ -123,6 +123,10 @@ This project allows users to programmatically interact with Google Gemini throug
 - Playwright Chromium browser installed
 - Python 3.11
 - Port 5000 available
+- System dependencies for browser automation:
+  - xorg.libXcomposite, xorg.libXdamage, xorg.libXfixes
+  - xorg.libxcb, libxkbcommon, mesa
+  - nspr, nss, dbus, atk, at-spi2-atk, alsa-lib
 
 ## Troubleshooting
 
