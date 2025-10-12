@@ -35,10 +35,16 @@ _thread_local = threading.local()
 
 def get_base_url():
     """Get the proper base URL for constructing image URLs"""
+    # Check for Replit domain first
     replit_domain = os.environ.get('REPLIT_DOMAINS')
     if replit_domain:
         return f"https://{replit_domain}"
-    return request.host_url.rstrip('/')
+    
+    # For Render and other platforms, use the request URL with proper scheme
+    # Render sets X-Forwarded-Proto header
+    scheme = request.headers.get('X-Forwarded-Proto', 'https' if request.is_secure else 'http')
+    host = request.headers.get('X-Forwarded-Host', request.host)
+    return f"{scheme}://{host}"
 
 def load_cookies():
     """Load cookies from account.txt file or ACCOUNT_COOKIES env var - supports JSON, Netscape, and name=value formats"""
