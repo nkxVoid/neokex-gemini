@@ -39,9 +39,9 @@ def load_cookies():
                                 processed_cookie['secure'] = cookie['secure']
                             
                             if 'expires' in cookie and cookie['expires']:
-                                processed_cookie['expires'] = int(float(cookie['expires']))
+                                processed_cookie['expires'] = float(cookie['expires'])
                             elif 'expirationDate' in cookie and cookie['expirationDate']:
-                                processed_cookie['expires'] = int(float(cookie['expirationDate']))
+                                processed_cookie['expires'] = float(cookie['expirationDate'])
                             
                             if 'httpOnly' in cookie and cookie['httpOnly']:
                                 processed_cookie['httpOnly'] = cookie['httpOnly']
@@ -93,7 +93,7 @@ def load_cookies():
                         
                         if expiry and expiry != '0':
                             try:
-                                cookie['expires'] = int(expiry)
+                                cookie['expires'] = float(expiry)
                             except:
                                 pass
                         
@@ -139,24 +139,40 @@ def setup_browser_context(playwright):
     
     cookies = load_cookies()
     if cookies:
-        context.add_cookies(cookies)
+        try:
+            logger.info(f"Attempting to add {len(cookies)} cookies to browser context")
+            context.add_cookies(cookies)
+            logger.info("Cookies successfully added to browser context")
+        except Exception as e:
+            logger.error(f"Error adding cookies to context: {str(e)}")
+            logger.error(f"Cookie that failed: {cookies}")
+            raise
     
     return browser, context
 
 def check_login_required(page):
-    """Check if login is required"""
+    """Check if login is required - improved detection"""
     try:
-        login_indicators = [
-            'a[href*="accounts.google.com"]',
-            'button:has-text("Sign in")',
-            'a:has-text("Sign in")'
+        # First, check if we can find the chat input (indicates logged in)
+        input_selectors = [
+            'rich-textarea[placeholder]',
+            'div[contenteditable="true"][role="textbox"]'
         ]
-        for indicator in login_indicators:
-            if page.locator(indicator).count() > 0:
-                return True
+        for selector in input_selectors:
+            if page.locator(selector).count() > 0:
+                return False  # Input found = logged in
+        
+        # If no input, check if we're on the landing page (indicates not logged in)
+        if page.locator('button:has-text("Chat with Gemini")').count() > 0:
+            return True  # Landing page = need to login
+        
+        # Fallback: check for explicit sign-in buttons
+        if page.locator('button:has-text("Sign in"), a:has-text("Sign in")').count() > 0:
+            return True
+        
         return False
     except:
-        return False
+        return True  # Default to login required if error
 
 def wait_for_response_complete(page):
     """Wait for Gemini to complete its response"""
@@ -647,6 +663,55 @@ def health():
         'cookies_loaded': len(cookies) > 0,
         'cookie_count': len(cookies)
     })
+
+@app.route('/debug_cookies', methods=['GET'])
+def debug_cookies():
+    """Debug endpoint to check cookies in browser"""
+    try:
+        with sync_playwright() as p:
+            browser, context = setup_browser_context(p)
+            page = context.new_page()
+            
+            page.goto('https://gemini.google.com/app', timeout=30000)
+            page.wait_for_timeout(3000)
+            
+            browser_cookies = context.cookies()
+            
+            # Check for login indicators
+            login_check = check_login_required(page)
+            
+            # Check for user profile indicator (logged in state)
+            page.screenshot(path='/tmp/debug_screenshot_app.png')
+            
+            # Get page title and URL
+            page_title = page.title()
+            page_url = page.url
+            
+            # Try to find the input field
+            input_found = False
+            try:
+                input_element = page.wait_for_selector('rich-textarea[placeholder], div[contenteditable="true"][role="textbox"]', timeout=5000)
+                input_found = input_element is not None
+            except:
+                pass
+            
+            browser.close()
+            
+            return jsonify({
+                'status': 'success',
+                'loaded_cookies_count': len(load_cookies()),
+                'browser_cookies_count': len(browser_cookies),
+                'login_required': login_check,
+                'input_field_found': input_found,
+                'page_title': page_title,
+                'page_url': page_url,
+                'screenshot': '/tmp/debug_screenshot_app.png'
+            })
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
