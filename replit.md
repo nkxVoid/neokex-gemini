@@ -16,7 +16,14 @@ This project allows users to programmatically interact with Google Gemini throug
 
 ## Recent Changes
 *October 12, 2025*
-- **Render Cloud Compatibility Fix (Latest):**
+- **Render Multiple Images Fix (Latest):**
+  - **FIXED**: API now returns ALL images on Render (was only returning 1 image)
+  - Root cause: Render's reduced viewport (1024x600) prevented all images from loading into DOM
+  - Added automatic page scrolling after response completion to trigger lazy-loading
+  - Scrolls to bottom, waits 1 second for images to load, then scrolls back to top
+  - Applied to both /gimage and /gedit endpoints
+  - **Result: Render now returns multiple images just like Replit does**
+- **Render Cloud Compatibility Fix:**
   - **FIXED**: "Could not find input field" error on Render deployment
   - Added networkidle wait state after page load for cloud environments
   - Increased selector timeouts from 4s to 8s for slower cloud connections

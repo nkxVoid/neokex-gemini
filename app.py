@@ -631,6 +631,19 @@ def generate_image():
                 
                 wait_for_response_complete(page)
                 
+                # Scroll down to ensure all images are loaded (especially important for small viewports on Render)
+                try:
+                    page.evaluate("""() => {
+                        window.scrollTo(0, document.body.scrollHeight);
+                    }""")
+                    page.wait_for_timeout(1000)  # Wait 1 second for lazy-loaded images
+                    page.evaluate("""() => {
+                        window.scrollTo(0, 0);
+                    }""")
+                    page.wait_for_timeout(500)  # Brief wait after scrolling back up
+                except:
+                    pass
+                
                 image_selectors = [
                     'img[src*="googleusercontent.com"]',
                     'img[src*="gemini"]',
@@ -788,6 +801,19 @@ def edit_image():
                     page.keyboard.press('Enter')
                 
                 wait_for_response_complete(page)
+                
+                # Scroll down to ensure all images are loaded (especially important for small viewports on Render)
+                try:
+                    page.evaluate("""() => {
+                        window.scrollTo(0, document.body.scrollHeight);
+                    }""")
+                    page.wait_for_timeout(1000)  # Wait 1 second for lazy-loaded images
+                    page.evaluate("""() => {
+                        window.scrollTo(0, 0);
+                    }""")
+                    page.wait_for_timeout(500)  # Brief wait after scrolling back up
+                except:
+                    pass
                 
                 image_selectors = [
                     'img[src*="googleusercontent.com"]',
