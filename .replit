@@ -4,7 +4,7 @@ expertMode = true
 
 [nix]
 channel = "stable-25_05"
-packages = ["gitFull", "playwright-driver", "xorg.libXcomposite", "xorg.libXdamage", "xorg.libXfixes", "xorg.libxcb", "libxkbcommon", "mesa", "nspr", "nss", "dbus", "atk", "at-spi2-atk", "alsa-lib", "mesa-demos", "libglvnd"]
+packages = ["gitFull", "playwright-driver", "xorg.libXcomposite", "xorg.libXdamage", "xorg.libXfixes", "xorg.libxcb", "libxkbcommon", "mesa", "nspr", "nss", "dbus", "atk", "at-spi2-atk", "alsa-lib", "mesa-demos", "libglvnd", "cairo", "pango", "cups", "gtk3", "libdrm", "expat", "libgbm"]
 
 [workflows]
 runButton = "Project"
@@ -33,3 +33,7 @@ outputType = "webview"
 [[ports]]
 localPort = 5000
 externalPort = 80
+
+[[ports]]
+localPort = 34671
+externalPort = 3000
