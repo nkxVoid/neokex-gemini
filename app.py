@@ -948,13 +948,8 @@ def home():
 
 @app.route('/health', methods=['GET'])
 def health():
-    """Health check endpoint"""
-    cookies = load_cookies()
-    return jsonify({
-        'status': 'healthy',
-        'cookies_loaded': len(cookies) > 0,
-        'cookie_count': len(cookies)
-    })
+    """Health check endpoint - ultra-lightweight for fast response"""
+    return jsonify({'status': 'healthy'}), 200
 
 @app.route('/debug_cookies', methods=['GET'])
 def debug_cookies():
