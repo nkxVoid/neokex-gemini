@@ -941,89 +941,20 @@ def edit_image():
 
 @app.route('/', methods=['GET'])
 def home():
-    """API status check"""
+    """API documentation"""
     return jsonify({
-        'status': 'alive',
-        'message': 'API is running'
+        'status': 'running',
+        'endpoints': {
+            '/gemini': 'Chat with Gemini - GET /gemini?chat=your_message',
+            '/gimage': 'Generate images - GET /gimage?prompt=image_description',
+            '/gedit': 'Edit images - GET /gedit?imgUrl=image_url&prompt=edit_instructions'
+        }
     })
 
-@app.route('/health', methods=['GET'])
-def health():
-    """Health check endpoint - ultra-lightweight for fast response"""
-    return jsonify({'status': 'healthy'}), 200
-
-@app.route('/debug_cookies', methods=['GET'])
-def debug_cookies():
-    """Debug endpoint to check cookies in browser"""
-    try:
-        browser, context = get_or_create_browser()
-        with get_browser_page() as page:
-            page.goto('https://gemini.google.com/app', timeout=30000)
-            page.wait_for_timeout(500)
-            
-            browser_cookies = context.cookies()
-            
-            # Check for login indicators
-            login_check = check_login_required(page)
-            
-            # Check for user profile indicator (logged in state)
-            page.screenshot(path='/tmp/debug_screenshot_app.png')
-            
-            # Get page title and URL
-            page_title = page.title()
-            page_url = page.url
-            
-            # Try to find the input field
-            input_found = False
-            try:
-                input_element = page.wait_for_selector('rich-textarea[placeholder], div[contenteditable="true"][role="textbox"]', timeout=5000)
-                input_found = input_element is not None
-            except:
-                pass
-            
-            return jsonify({
-                'status': 'success',
-                'loaded_cookies_count': len(load_cookies()),
-                'browser_cookies_count': len(browser_cookies),
-                'login_required': login_check,
-                'input_field_found': input_found,
-                'page_title': page_title,
-                'page_url': page_url,
-                'screenshot': '/tmp/debug_screenshot_app.png'
-            })
-    except Exception as e:
-        return jsonify({
-            'status': 'error',
-            'message': str(e)
-        }), 500
-
-# Global flag to ensure cleanup thread starts only once per worker
-_cleanup_started = False
-_cleanup_lock = threading.Lock()
-
-def init_cleanup():
-    """Initialize cleanup thread (safe for gunicorn workers)"""
-    global _cleanup_started
-    with _cleanup_lock:
-        if not _cleanup_started:
-            try:
-                # Start very aggressive cleanup for 512MB RAM limit
-                start_cleanup_thread(interval_hours=1, max_age_hours=3)
-                # Run initial cleanup on startup
-                cleanup_old_images(max_age_hours=3)
-                _cleanup_started = True
-            except Exception as e:
-                logger.error(f"Failed to initialize cleanup: {str(e)}")
-
-@app.before_request
-def initialize_once():
-    """Initialize cleanup thread on first request (gunicorn-safe)"""
-    init_cleanup()
+# Cleanup disabled on startup for faster Render deployment
+# Images will be cleaned up manually or with external cron if needed
 
 if __name__ == '__main__':
-    # Direct Flask run (development mode)
-    init_cleanup()
-    
     # Use PORT from environment (for Render) or default to 5000
     port = int(os.environ.get('PORT', 5000))
     
