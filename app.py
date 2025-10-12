@@ -217,7 +217,8 @@ def start_cleanup_thread(interval_hours=1, max_age_hours=3):
         daemon=True
     )
     cleanup_thread.start()
-    logger.error(f"Started cleanup thread (every {interval_hours}h, max_age: {max_age_hours}h)")
+    # Use print instead of logger to avoid "ERROR:" prefix confusion
+    print(f"INFO: Cleanup thread started (interval: {interval_hours}h, max_age: {max_age_hours}h)", flush=True)
 
 def get_or_create_browser():
     """Get or create thread-local browser instance"""
@@ -996,17 +997,33 @@ def debug_cookies():
             'message': str(e)
         }), 500
 
-# Initialize cleanup on module load (works with both Flask dev server and gunicorn)
-try:
-    # Start very aggressive cleanup for 512MB RAM limit (runs every 1 hour, deletes images older than 3 hours)
-    start_cleanup_thread(interval_hours=1, max_age_hours=3)
-    
-    # Run initial cleanup on startup
-    cleanup_old_images(max_age_hours=3)
-except Exception as e:
-    logger.error(f"Failed to initialize cleanup: {str(e)}")
+# Global flag to ensure cleanup thread starts only once per worker
+_cleanup_started = False
+_cleanup_lock = threading.Lock()
+
+def init_cleanup():
+    """Initialize cleanup thread (safe for gunicorn workers)"""
+    global _cleanup_started
+    with _cleanup_lock:
+        if not _cleanup_started:
+            try:
+                # Start very aggressive cleanup for 512MB RAM limit
+                start_cleanup_thread(interval_hours=1, max_age_hours=3)
+                # Run initial cleanup on startup
+                cleanup_old_images(max_age_hours=3)
+                _cleanup_started = True
+            except Exception as e:
+                logger.error(f"Failed to initialize cleanup: {str(e)}")
+
+@app.before_request
+def initialize_once():
+    """Initialize cleanup thread on first request (gunicorn-safe)"""
+    init_cleanup()
 
 if __name__ == '__main__':
+    # Direct Flask run (development mode)
+    init_cleanup()
+    
     # Use PORT from environment (for Render) or default to 5000
     port = int(os.environ.get('PORT', 5000))
     
