@@ -398,8 +398,29 @@ def download_authenticated_image(page, url):
         
         image_data = response.body()
         
-        # Always use .jpg extension
-        ext = 'jpg'
+        # Detect image format from content or headers
+        ext = 'jpg'  # default
+        
+        # Check content-type header first
+        content_type = response.headers.get('content-type', '').lower()
+        if 'png' in content_type:
+            ext = 'png'
+        elif 'jpeg' in content_type or 'jpg' in content_type:
+            ext = 'jpg'
+        elif 'webp' in content_type:
+            ext = 'webp'
+        elif 'gif' in content_type:
+            ext = 'gif'
+        else:
+            # Fallback: detect from binary signature
+            if image_data[:8] == b'\x89PNG\r\n\x1a\n':
+                ext = 'png'
+            elif image_data[:3] == b'\xff\xd8\xff':
+                ext = 'jpg'
+            elif image_data[:4] == b'RIFF' and image_data[8:12] == b'WEBP':
+                ext = 'webp'
+            elif image_data[:6] in (b'GIF87a', b'GIF89a'):
+                ext = 'gif'
         
         # Generate unique filename
         filename = f"{uuid.uuid4()}.{ext}"
@@ -409,7 +430,7 @@ def download_authenticated_image(page, url):
         with open(filepath, 'wb') as f:
             f.write(image_data)
         
-        logger.info(f"Saved authenticated image to {filepath}")
+        logger.info(f"Saved authenticated image to {filepath} (format: {ext})")
         return filename
     except Exception as e:
         logger.error(f"Failed to download authenticated image: {str(e)}")
