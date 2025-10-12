@@ -7,6 +7,9 @@ from pathlib import Path
 import logging
 import uuid
 import json
+import threading
+import time
+from datetime import datetime, timedelta
 
 os.environ['PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS'] = 'true'
 
@@ -135,6 +138,46 @@ def load_cookies():
             return []
     
     return cookies
+
+def cleanup_old_images(max_age_hours=24):
+    """Delete image files older than max_age_hours from static/images directory"""
+    try:
+        current_time = datetime.now()
+        deleted_count = 0
+        
+        for image_file in STATIC_IMAGES_DIR.glob('*.jpg'):
+            file_age = current_time - datetime.fromtimestamp(image_file.stat().st_mtime)
+            if file_age > timedelta(hours=max_age_hours):
+                try:
+                    image_file.unlink()
+                    deleted_count += 1
+                    logger.info(f"Deleted old image: {image_file.name} (age: {file_age})")
+                except Exception as e:
+                    logger.error(f"Failed to delete {image_file.name}: {str(e)}")
+        
+        if deleted_count > 0:
+            logger.info(f"Cleanup complete: Deleted {deleted_count} old images")
+    except Exception as e:
+        logger.error(f"Error during image cleanup: {str(e)}")
+
+def cleanup_background_task(interval_hours=6, max_age_hours=24):
+    """Background task to periodically clean up old images"""
+    while True:
+        try:
+            time.sleep(interval_hours * 3600)
+            cleanup_old_images(max_age_hours)
+        except Exception as e:
+            logger.error(f"Background cleanup task error: {str(e)}")
+
+def start_cleanup_thread(interval_hours=6, max_age_hours=24):
+    """Start background cleanup thread"""
+    cleanup_thread = threading.Thread(
+        target=cleanup_background_task,
+        args=(interval_hours, max_age_hours),
+        daemon=True
+    )
+    cleanup_thread.start()
+    logger.info(f"Started background cleanup thread (interval: {interval_hours}h, max_age: {max_age_hours}h)")
 
 def setup_browser_context(playwright):
     """Setup browser with cookies"""
@@ -811,4 +854,10 @@ def debug_cookies():
         }), 500
 
 if __name__ == '__main__':
+    # Start background cleanup thread (runs every 6 hours, deletes images older than 24 hours)
+    start_cleanup_thread(interval_hours=6, max_age_hours=24)
+    
+    # Run initial cleanup on startup
+    cleanup_old_images(max_age_hours=24)
+    
     app.run(host='0.0.0.0', port=5000, debug=True)
