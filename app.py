@@ -34,14 +34,28 @@ def load_cookies():
                                 'domain': str(cookie.get('domain', '.google.com')),
                                 'path': str(cookie.get('path', '/'))
                             }
+                            
                             if 'secure' in cookie and cookie['secure']:
                                 processed_cookie['secure'] = cookie['secure']
-                            if 'expires' in cookie:
-                                processed_cookie['expires'] = cookie['expires']
-                            if 'httpOnly' in cookie:
+                            
+                            if 'expires' in cookie and cookie['expires']:
+                                processed_cookie['expires'] = int(float(cookie['expires']))
+                            elif 'expirationDate' in cookie and cookie['expirationDate']:
+                                processed_cookie['expires'] = int(float(cookie['expirationDate']))
+                            
+                            if 'httpOnly' in cookie and cookie['httpOnly']:
                                 processed_cookie['httpOnly'] = cookie['httpOnly']
-                            if 'sameSite' in cookie:
-                                processed_cookie['sameSite'] = str(cookie['sameSite'])
+                            
+                            if 'sameSite' in cookie and cookie['sameSite']:
+                                same_site = str(cookie['sameSite']).lower()
+                                if same_site == 'no_restriction':
+                                    processed_cookie['sameSite'] = 'None'
+                                elif same_site == 'lax':
+                                    processed_cookie['sameSite'] = 'Lax'
+                                elif same_site == 'strict':
+                                    processed_cookie['sameSite'] = 'Strict'
+                                elif same_site in ['none', 'lax', 'strict']:
+                                    processed_cookie['sameSite'] = same_site.capitalize()
                             
                             cookies.append(processed_cookie)
                             logger.info(f"Loaded JSON cookie: {cookie['name']}")

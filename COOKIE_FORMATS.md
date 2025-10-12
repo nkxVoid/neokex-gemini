@@ -6,7 +6,7 @@ The `account.txt` file now supports **three different cookie formats**. The syst
 
 The most flexible and feature-rich format. Supports all cookie properties.
 
-### Example:
+### Example (Standard Format):
 ```json
 [
   {
@@ -27,6 +27,33 @@ The most flexible and feature-rich format. Supports all cookie properties.
   }
 ]
 ```
+
+### Browser Extension Format (Also Supported):
+If you export directly from browser extensions, the format may include additional fields like `expirationDate`, `hostOnly`, `session`, etc. **This is fully supported!**
+
+```json
+[
+  {
+    "name": "__Secure-1PSID",
+    "value": "cookie_value",
+    "domain": ".google.com",
+    "path": "/",
+    "secure": true,
+    "httpOnly": true,
+    "sameSite": "no_restriction",
+    "expirationDate": 1794822898.293,
+    "hostOnly": false,
+    "session": false
+  }
+]
+```
+
+**Auto-conversion features:**
+- `sameSite: "no_restriction"` → automatically converted to `"None"`
+- `sameSite: "lax"` → automatically converted to `"Lax"`  
+- `sameSite: "strict"` → automatically converted to `"Strict"`
+- `sameSite: null` → omitted (valid for cookies without SameSite)
+- `expirationDate` → automatically converted to `expires` timestamp
 
 ### Supported Properties:
 - `name` (required): Cookie name
@@ -55,8 +82,8 @@ The classic Netscape cookie format with tab-separated values.
 
 ### Example:
 ```
-.google.com	TRUE	/	TRUE	1234567890	__Secure-1PSID	cookie_value_here
-.google.com	TRUE	/	TRUE	1234567890	__Secure-1PSIDTS	another_value
+.google.com     TRUE    /       TRUE    1234567890      __Secure-1PSID  cookie_value_here
+.google.com     TRUE    /       TRUE    1234567890      __Secure-1PSIDTS        another_value
 ```
 
 ### Format Structure:
