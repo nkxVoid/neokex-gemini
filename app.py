@@ -41,9 +41,19 @@ def get_base_url():
         return f"https://{replit_domain}"
     
     # For Render and other platforms, use the request URL with proper scheme
-    # Render sets X-Forwarded-Proto header
-    scheme = request.headers.get('X-Forwarded-Proto', 'https' if request.is_secure else 'http')
+    # Check X-Forwarded-Proto header first (set by most reverse proxies)
+    scheme = request.headers.get('X-Forwarded-Proto')
+    if not scheme:
+        # Fall back to request.scheme which handles most cases correctly
+        scheme = request.scheme
+    
+    # Get the host, checking X-Forwarded-Host for proxied requests
     host = request.headers.get('X-Forwarded-Host', request.host)
+    
+    # Always use https in production if not explicitly http
+    if scheme == 'http' and 'localhost' not in host and '127.0.0.1' not in host:
+        scheme = 'https'
+    
     return f"{scheme}://{host}"
 
 def load_cookies():
