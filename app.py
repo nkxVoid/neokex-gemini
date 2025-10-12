@@ -668,29 +668,29 @@ def generate_image():
                     'div[data-message-author-role="model"] img'
                 ]
                 
-                google_image_url = None
+                google_image_urls = []
                 for selector in image_selectors:
                     images = page.locator(selector).all()
                     if images:
                         logger.info(f"Found {len(images)} images with selector: {selector}")
-                        # Get the last image (most recent generated one)
-                        last_img = images[-1]
-                        src = last_img.get_attribute('src')
-                        logger.info(f"Last image src: {src}")
-                        if src and ('http' in src):
-                            google_image_url = src
-                            logger.info(f"Selected image URL: {google_image_url}")
+                        # Get ALL images, not just the last one
+                        for img in images:
+                            src = img.get_attribute('src')
+                            if src and ('http' in src):
+                                logger.info(f"Found image src: {src}")
+                                google_image_urls.append(src)
+                        if google_image_urls:
                             break
                 
-                # Download image with authentication and save locally
+                # Download all images with authentication and save locally
                 local_image_urls = []
-                if google_image_url:
+                base_url = get_base_url()
+                for google_image_url in google_image_urls:
                     filename = download_authenticated_image(page, google_image_url)
                     if filename:
-                        # Get the base URL (uses REPLIT_DOMAINS for public access)
-                        base_url = get_base_url()
                         local_url = f"{base_url}/images/{filename}"
                         local_image_urls.append(local_url)
+                        logger.info(f"Downloaded and saved image: {local_url}")
                 
                 if local_image_urls:
                     return jsonify({
@@ -832,24 +832,24 @@ def edit_image():
                     'div[data-message-author-role="model"] img'
                 ]
                 
-                google_result_url = None
+                google_result_urls = []
                 for selector in image_selectors:
                     images = page.locator(selector).all()
                     if images:
-                        # Get the last image (most recent edited one)
-                        last_img = images[-1]
-                        src = last_img.get_attribute('src')
-                        if src and ('http' in src):
-                            google_result_url = src
+                        # Get ALL images, not just the last one
+                        for img in images:
+                            src = img.get_attribute('src')
+                            if src and ('http' in src):
+                                google_result_urls.append(src)
+                        if google_result_urls:
                             break
                 
-                # Download image with authentication and save locally
+                # Download all images with authentication and save locally
                 local_result_urls = []
-                if google_result_url:
+                base_url = get_base_url()
+                for google_result_url in google_result_urls:
                     filename = download_authenticated_image(page, google_result_url)
                     if filename:
-                        # Get the base URL (uses REPLIT_DOMAINS for public access)
-                        base_url = get_base_url()
                         local_url = f"{base_url}/images/{filename}"
                         local_result_urls.append(local_url)
                 
