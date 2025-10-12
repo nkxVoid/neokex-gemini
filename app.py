@@ -6,6 +6,7 @@ import tempfile
 from pathlib import Path
 import logging
 import uuid
+import json
 
 os.environ['PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS'] = 'true'
 
@@ -16,11 +17,41 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 def load_cookies():
-    """Load cookies from account.txt file - supports both Netscape and name=value formats"""
+    """Load cookies from account.txt file - supports JSON, Netscape, and name=value formats"""
     cookies = []
     try:
         with open('account.txt', 'r') as f:
-            lines = f.readlines()
+            content = f.read()
+            
+            try:
+                json_data = json.loads(content)
+                if isinstance(json_data, list):
+                    for cookie in json_data:
+                        if isinstance(cookie, dict) and 'name' in cookie and 'value' in cookie:
+                            processed_cookie = {
+                                'name': str(cookie['name']),
+                                'value': str(cookie['value']),
+                                'domain': str(cookie.get('domain', '.google.com')),
+                                'path': str(cookie.get('path', '/'))
+                            }
+                            if 'secure' in cookie and cookie['secure']:
+                                processed_cookie['secure'] = cookie['secure']
+                            if 'expires' in cookie:
+                                processed_cookie['expires'] = cookie['expires']
+                            if 'httpOnly' in cookie:
+                                processed_cookie['httpOnly'] = cookie['httpOnly']
+                            if 'sameSite' in cookie:
+                                processed_cookie['sameSite'] = str(cookie['sameSite'])
+                            
+                            cookies.append(processed_cookie)
+                            logger.info(f"Loaded JSON cookie: {cookie['name']}")
+                    
+                    logger.info(f"Total cookies loaded from JSON: {len(cookies)}")
+                    return cookies
+            except json.JSONDecodeError:
+                pass
+            
+            lines = content.split('\n')
             for line in lines:
                 line = line.strip()
                 if not line or line.startswith('#'):
@@ -44,7 +75,7 @@ def load_cookies():
                         }
                         
                         if secure:
-                            cookie['secure'] = True
+                            cookie['secure'] = secure
                         
                         if expiry and expiry != '0':
                             try:
@@ -583,8 +614,9 @@ def home():
         },
         'setup': {
             'step1': 'Add your Gemini cookies to account.txt',
-            'step2': 'Format: name=value (one per line)',
-            'step3': 'Important cookies: __Secure-1PSID, __Secure-1PSIDTS, __Secure-1PAPISID'
+            'step2': 'Supported formats: JSON (array of cookie objects), Netscape (tab-separated), or simple name=value (one per line)',
+            'step3': 'Important cookies: __Secure-1PSID, __Secure-1PSIDTS, __Secure-1PAPISID',
+            'json_example': '[{"name": "cookie_name", "value": "cookie_value", "domain": ".google.com", "path": "/"}]'
         }
     })
 
