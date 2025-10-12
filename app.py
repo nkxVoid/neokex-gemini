@@ -14,23 +14,57 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 def load_cookies():
-    """Load cookies from account.txt file"""
+    """Load cookies from account.txt file - supports both Netscape and name=value formats"""
     cookies = []
     try:
         with open('account.txt', 'r') as f:
             lines = f.readlines()
             for line in lines:
                 line = line.strip()
-                if line and not line.startswith('#'):
-                    if '=' in line:
-                        name, value = line.split('=', 1)
-                        cookies.append({
-                            'name': name.strip(),
-                            'value': value.strip(),
-                            'domain': '.google.com',
-                            'path': '/'
-                        })
-        logger.info(f"Loaded {len(cookies)} cookies from account.txt")
+                if not line or line.startswith('#'):
+                    continue
+                
+                if '\t' in line:
+                    parts = line.split('\t')
+                    if len(parts) >= 7:
+                        domain = parts[0]
+                        path = parts[2]
+                        secure = parts[3].upper() == 'TRUE'
+                        expiry = parts[4]
+                        name = parts[5]
+                        value = parts[6]
+                        
+                        cookie = {
+                            'name': name,
+                            'value': value,
+                            'domain': domain if domain.startswith('.') else f'.{domain}',
+                            'path': path
+                        }
+                        
+                        if secure:
+                            cookie['secure'] = True
+                        
+                        if expiry and expiry != '0':
+                            try:
+                                cookie['expires'] = int(expiry)
+                            except:
+                                pass
+                        
+                        cookies.append(cookie)
+                        logger.info(f"Loaded Netscape cookie: {name}")
+                    continue
+                
+                if '=' in line:
+                    name, value = line.split('=', 1)
+                    cookies.append({
+                        'name': name.strip(),
+                        'value': value.strip(),
+                        'domain': '.google.com',
+                        'path': '/'
+                    })
+                    logger.info(f"Loaded simple cookie: {name.strip()}")
+        
+        logger.info(f"Total cookies loaded: {len(cookies)}")
         return cookies
     except FileNotFoundError:
         logger.error("account.txt file not found")

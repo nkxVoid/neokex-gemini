@@ -20,7 +20,14 @@ This project allows users to programmatically interact with Google Gemini throug
 - Installed Flask, Playwright, requests, and python-dotenv
 - Created Flask API server with three endpoints
 - Implemented browser automation with Playwright
-- Added cookie loading system from account.txt
+- Added cookie loading system from account.txt with dual format support:
+  - Simple name=value format for manual entry
+  - Netscape format for browser extension exports
+- Fixed critical bugs in browser automation:
+  - Replaced Playwright-specific selectors with standard JavaScript
+  - Added proper image download and upload for /gedit endpoint
+  - Implemented login detection and response verification
+  - Multiple selector fallbacks for reliability
 - Configured API Server workflow on port 5000
 - Created comprehensive README documentation
 - Added .gitignore for Python and sensitive files

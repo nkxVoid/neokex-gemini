@@ -13,7 +13,10 @@ A Flask-based API server that uses web scraping to interact with Google Gemini f
 
 ### 1. Configure Your Cookies
 
-1. Open your browser and log in to [Gemini](https://gemini.google.com/u/5/app?pageId=none)
+The API supports **two cookie formats** for maximum flexibility:
+
+#### Option A: Simple Format (Manual Copy)
+1. Open your browser and log in to [Gemini](https://gemini.google.com/app)
 2. Open Developer Tools (F12)
 3. Go to **Application** > **Cookies** > `https://gemini.google.com`
 4. Copy the following important cookies:
@@ -29,6 +32,16 @@ A Flask-based API server that uses web scraping to interact with Google Gemini f
    __Secure-1PSIDTS=your_value_here
    __Secure-1PAPISID=your_value_here
    ```
+
+#### Option B: Netscape Format (Browser Extensions)
+1. Install a cookie export extension like:
+   - **EditThisCookie** (Chrome/Edge)
+   - **Get cookies.txt LOCALLY** (Firefox/Chrome)
+2. Visit [Gemini](https://gemini.google.com/app)
+3. Export cookies in **Netscape format**
+4. Paste the exported cookies directly into `account.txt`
+
+The loader automatically detects which format you're using!
 
 ### 2. Start the Server
 
