@@ -42,3 +42,6 @@ playwright-browsers/
 
 # Account credentials (sensitive)
 account.txt
+
+# Downloaded images
+static/images/

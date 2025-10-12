@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 import os
 import requests
@@ -12,6 +12,9 @@ os.environ['PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS'] = 'true'
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SESSION_SECRET', 'dev-secret-key')
+
+STATIC_IMAGES_DIR = Path('static/images')
+STATIC_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -212,6 +215,49 @@ def download_image(url):
     except Exception as e:
         logger.error(f"Failed to download image: {str(e)}")
         return None
+
+def download_authenticated_image(page, url):
+    """Download image using authenticated browser context and save to static folder"""
+    try:
+        logger.info(f"Downloading authenticated image from: {url}")
+        
+        # Navigate to the image URL with the authenticated context
+        response = page.request.get(url)
+        
+        if response.status != 200:
+            logger.error(f"Failed to download image: HTTP {response.status}")
+            return None
+        
+        image_data = response.body()
+        
+        # Determine file extension
+        ext = 'jpg'
+        content_type = response.headers.get('content-type', '')
+        if 'png' in content_type:
+            ext = 'png'
+        elif 'webp' in content_type:
+            ext = 'webp'
+        elif 'gif' in content_type:
+            ext = 'gif'
+        
+        # Generate unique filename
+        filename = f"{uuid.uuid4()}.{ext}"
+        filepath = STATIC_IMAGES_DIR / filename
+        
+        # Save image to static folder
+        with open(filepath, 'wb') as f:
+            f.write(image_data)
+        
+        logger.info(f"Saved authenticated image to {filepath}")
+        return filename
+    except Exception as e:
+        logger.error(f"Failed to download authenticated image: {str(e)}")
+        return None
+
+@app.route('/images/<filename>')
+def serve_image(filename):
+    """Serve downloaded images from static folder"""
+    return send_from_directory(STATIC_IMAGES_DIR, filename)
 
 @app.route('/gemini', methods=['GET'])
 def gemini_chat():
@@ -450,23 +496,34 @@ def generate_image():
                     'div[data-message-author-role="model"] img'
                 ]
                 
-                image_urls = []
+                google_image_urls = []
                 for selector in image_selectors:
                     images = page.locator(selector).all()
                     for img in images:
                         src = img.get_attribute('src')
-                        if src and ('http' in src) and src not in image_urls:
-                            image_urls.append(src)
-                    if image_urls:
+                        if src and ('http' in src) and src not in google_image_urls:
+                            google_image_urls.append(src)
+                    if google_image_urls:
                         break
+                
+                # Download images with authentication and save locally
+                local_image_urls = []
+                if google_image_urls:
+                    for google_url in google_image_urls:
+                        filename = download_authenticated_image(page, google_url)
+                        if filename:
+                            # Get the base URL from request
+                            base_url = request.host_url.rstrip('/')
+                            local_url = f"{base_url}/images/{filename}"
+                            local_image_urls.append(local_url)
                 
                 browser.close()
                 
-                if image_urls:
+                if local_image_urls:
                     return jsonify({
                         'status': 'success',
                         'prompt': prompt,
-                        'images': image_urls
+                        'images': local_image_urls
                     })
                 else:
                     return jsonify({
@@ -608,15 +665,26 @@ def edit_image():
                     'div[data-message-author-role="model"] img'
                 ]
                 
-                result_image_urls = []
+                google_result_urls = []
                 for selector in image_selectors:
                     images = page.locator(selector).all()
                     for img in images:
                         src = img.get_attribute('src')
-                        if src and ('http' in src) and src not in result_image_urls:
-                            result_image_urls.append(src)
-                    if result_image_urls:
+                        if src and ('http' in src) and src not in google_result_urls:
+                            google_result_urls.append(src)
+                    if google_result_urls:
                         break
+                
+                # Download images with authentication and save locally
+                local_result_urls = []
+                if google_result_urls:
+                    for google_url in google_result_urls:
+                        filename = download_authenticated_image(page, google_url)
+                        if filename:
+                            # Get the base URL from request
+                            base_url = request.host_url.rstrip('/')
+                            local_url = f"{base_url}/images/{filename}"
+                            local_result_urls.append(local_url)
                 
                 response_selectors = [
                     'div[data-message-author-role="model"]',
@@ -634,14 +702,14 @@ def edit_image():
                 browser.close()
                 os.unlink(image_file)
                 
-                if result_image_urls or response_text:
+                if local_result_urls or response_text:
                     result = {
                         'status': 'success',
                         'original_image': img_url,
                         'prompt': prompt
                     }
-                    if result_image_urls:
-                        result['edited_images'] = result_image_urls  # type: ignore
+                    if local_result_urls:
+                        result['edited_images'] = local_result_urls  # type: ignore
                     if response_text:
                         result['response'] = response_text.strip()
                     return jsonify(result)

@@ -23,12 +23,11 @@ name = "API Server"
 author = "agent"
 
 [workflows.workflow.metadata]
-outputType = "webview"
+outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "python app.py"
-waitForPort = 5000
 
 [[ports]]
 localPort = 5000
