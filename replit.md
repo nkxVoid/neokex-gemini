@@ -40,8 +40,18 @@ This project allows users to programmatically interact with Google Gemini throug
   - Added cookie caching in memory (5-minute TTL) to avoid repeated file I/O
   - Reduced all wait_for_timeout delays by 60-80% (from 14+ seconds to ~4 seconds total)
   - Replaced sync_playwright() per-request with global browser context manager
-  - Thread-safe browser management with automatic cleanup on exit
+  - Thread-safe browser management with RLock for concurrent request handling
+  - Automatic cookie refresh every 5 minutes without server restart
+  - Reference counting prevents context closure during active page operations
+  - Error resilience with proper rollback on page creation failures
   - **Result: API responses are now 3-5x faster**
+  
+**Technical Implementation:**
+  - Uses `threading.RLock()` for reentrant lock support (prevents deadlocks)
+  - Reference counting tracks active pages to defer cookie refresh until safe
+  - Cookie cache automatically expires and refreshes without breaking in-flight requests
+  - All cookie formats (JSON/Netscape/simple) properly cached
+  - Production-ready with proper error handling and cleanup
 
 ## Project Architecture
 
