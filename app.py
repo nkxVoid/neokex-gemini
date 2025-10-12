@@ -442,6 +442,10 @@ def gemini_chat():
     try:
         with get_browser_page() as page:
             page.goto('https://gemini.google.com/app', timeout=30000, wait_until='domcontentloaded')
+            try:
+                page.wait_for_load_state('networkidle', timeout=5000)
+            except PlaywrightTimeout:
+                pass
             
             if check_login_required(page):
                 return jsonify({
@@ -463,7 +467,7 @@ def gemini_chat():
                 input_element = None
                 for selector in input_selectors:
                     try:
-                        element = page.wait_for_selector(selector, timeout=4000, state='visible')
+                        element = page.wait_for_selector(selector, timeout=8000, state='visible')
                         if element:
                             input_element = element
                             break
@@ -582,6 +586,10 @@ def generate_image():
     try:
         with get_browser_page() as page:
             page.goto('https://gemini.google.com/app', timeout=30000, wait_until='domcontentloaded')
+            try:
+                page.wait_for_load_state('networkidle', timeout=5000)
+            except PlaywrightTimeout:
+                pass
             
             if check_login_required(page):
                 return jsonify({
@@ -601,7 +609,7 @@ def generate_image():
                 input_element = None
                 for selector in input_selectors:
                     try:
-                        element = page.wait_for_selector(selector, timeout=4000)
+                        element = page.wait_for_selector(selector, timeout=8000, state='visible')
                         if element:
                             input_element = element
                             break
@@ -609,7 +617,8 @@ def generate_image():
                         continue
                 
                 if not input_element:
-                    raise Exception("Could not find input field")
+                    page.screenshot(path='/tmp/gimage_error.png')
+                    raise Exception("Could not find input field. Screenshot saved to /tmp/gimage_error.png")
                 
                 input_element.click()
                 input_element.type(f"Generate an image: {prompt}", delay=0)
@@ -697,6 +706,10 @@ def edit_image():
     try:
         with get_browser_page() as page:
             page.goto('https://gemini.google.com/app', timeout=30000, wait_until='domcontentloaded')
+            try:
+                page.wait_for_load_state('networkidle', timeout=5000)
+            except PlaywrightTimeout:
+                pass
             
             if check_login_required(page):
                 os.unlink(image_file)
@@ -754,7 +767,7 @@ def edit_image():
                 input_element = None
                 for selector in input_selectors:
                     try:
-                        element = page.wait_for_selector(selector, timeout=4000)
+                        element = page.wait_for_selector(selector, timeout=8000, state='visible')
                         if element:
                             input_element = element
                             break
@@ -762,7 +775,8 @@ def edit_image():
                         continue
                 
                 if not input_element:
-                    raise Exception("Could not find input field")
+                    page.screenshot(path='/tmp/gedit_error.png')
+                    raise Exception("Could not find input field. Screenshot saved to /tmp/gedit_error.png")
                 
                 input_element.click()
                 input_element.type(prompt, delay=0)

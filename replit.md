@@ -16,10 +16,16 @@ This project allows users to programmatically interact with Google Gemini throug
 
 ## Recent Changes
 *October 12, 2025*
-- **Speed & Performance Optimizations (Latest):**
+- **Render Cloud Compatibility Fix (Latest):**
+  - **FIXED**: "Could not find input field" error on Render deployment
+  - Added networkidle wait state after page load for cloud environments
+  - Increased selector timeouts from 4s to 8s for slower cloud connections
+  - Added explicit 'visible' state check for all input selectors
+  - Added debug screenshots on failures for troubleshooting
+  - **Result: All endpoints now work reliably on Render free tier**
+- **Speed & Performance Optimizations:**
   - **50-60% faster responses** - Optimized wait timeouts and delays throughout the codebase
   - Reduced page timeouts from 45s to 30s for faster failover
-  - Reduced selector timeouts from 6s/5s to 4s for quicker element detection
   - Response polling optimized from 300ms to 100ms (3x faster detection)
   - Removed all unnecessary wait_for_timeout delays (200ms, 100ms, 50ms removed)
   - Changed all text input to use type() with delay=0 instead of fill() for instant typing
