@@ -335,7 +335,7 @@ def get_browser_page():
     """Context manager to get a browser page from thread-local browser"""
     browser, context = get_or_create_browser()
     page = context.new_page()
-    page.set_default_timeout(30000)
+    page.set_default_timeout(45000)
     
     try:
         yield page
@@ -418,7 +418,7 @@ def wait_for_response_complete(page):
                 btn.textContent?.toLowerCase().includes('stop')
             );
             return !stopButton || stopButton.disabled || !stopButton.offsetParent;
-        }""", timeout=30000, polling=300)
+        }""", timeout=45000, polling=300)
         
         page.wait_for_timeout(100)
         logger.info("Response completed")
@@ -520,7 +520,7 @@ def gemini_chat():
                 input_element = None
                 for selector in input_selectors:
                     try:
-                        element = page.wait_for_selector(selector, timeout=5000, state='visible')
+                        element = page.wait_for_selector(selector, timeout=6000, state='visible')
                         if element:
                             input_element = element
                             logger.info(f"Found input using selector: {selector}")
@@ -673,7 +673,7 @@ def generate_image():
                 input_element = None
                 for selector in input_selectors:
                     try:
-                        element = page.wait_for_selector(selector, timeout=4000)
+                        element = page.wait_for_selector(selector, timeout=5000)
                         if element:
                             input_element = element
                             logger.info(f"Found input using selector: {selector}")
@@ -685,9 +685,9 @@ def generate_image():
                     raise Exception("Could not find input field")
                 
                 input_element.click()
-                page.wait_for_timeout(50)
+                page.wait_for_timeout(100)
                 input_element.fill(f"Generate an image: {prompt}")
-                page.wait_for_timeout(50)
+                page.wait_for_timeout(100)
                 
                 send_button = page.locator('button[aria-label*="Send"], button:has-text("Send")').first
                 if send_button.count() > 0:
@@ -834,7 +834,7 @@ def edit_image():
                 input_element = None
                 for selector in input_selectors:
                     try:
-                        element = page.wait_for_selector(selector, timeout=4000)
+                        element = page.wait_for_selector(selector, timeout=5000)
                         if element:
                             input_element = element
                             logger.info(f"Found input using selector: {selector}")
@@ -846,9 +846,9 @@ def edit_image():
                     raise Exception("Could not find input field")
                 
                 input_element.click()
-                page.wait_for_timeout(50)
+                page.wait_for_timeout(100)
                 input_element.fill(prompt)
-                page.wait_for_timeout(50)
+                page.wait_for_timeout(100)
                 
                 send_button = page.locator('button[aria-label*="Send"], button:has-text("Send")').first
                 if send_button.count() > 0:
