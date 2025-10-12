@@ -138,11 +138,19 @@ All endpoints return error responses in this format:
 
 ## Important Notes
 
+✅ **Features:**
+- **Robust automation**: Multiple selector fallbacks for better reliability
+- **Login detection**: Automatically detects and reports authentication failures
+- **Image upload**: /gedit endpoint downloads and properly uploads images
+- **Response verification**: Waits for complete responses before returning
+- **Error handling**: Comprehensive error messages for easier debugging
+
 ⚠️ **Limitations:**
 - This API uses web scraping and may break if Google changes Gemini's UI
 - Cookie-based authentication may expire and need to be refreshed
 - Rate limiting may apply based on your Gemini account
 - Image editing functionality depends on Gemini's capabilities
+- Image generation depends on your Gemini account having access to this feature
 
 ⚠️ **Security:**
 - Never share your `account.txt` file (it contains your authentication cookies)

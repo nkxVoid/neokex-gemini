@@ -1,11 +1,11 @@
 from flask import Flask, request, jsonify
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 import os
-import json
-import time
-import base64
+import requests
+import tempfile
 from pathlib import Path
 import logging
+import uuid
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SESSION_SECRET', 'dev-secret-key')
@@ -41,7 +41,7 @@ def load_cookies():
 
 def setup_browser_context(playwright):
     """Setup browser with cookies"""
-    browser = playwright.chromium.launch(headless=True)
+    browser = playwright.chromium.launch(headless=True, args=['--disable-blink-features=AutomationControlled'])
     context = browser.new_context(
         viewport={'width': 1920, 'height': 1080},
         user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
@@ -52,6 +52,60 @@ def setup_browser_context(playwright):
         context.add_cookies(cookies)
     
     return browser, context
+
+def check_login_required(page):
+    """Check if login is required"""
+    try:
+        login_indicators = [
+            'a[href*="accounts.google.com"]',
+            'button:has-text("Sign in")',
+            'a:has-text("Sign in")'
+        ]
+        for indicator in login_indicators:
+            if page.locator(indicator).count() > 0:
+                return True
+        return False
+    except:
+        return False
+
+def wait_for_response_complete(page):
+    """Wait for Gemini to complete its response"""
+    try:
+        page.wait_for_function("""() => {
+            const buttons = Array.from(document.querySelectorAll('button'));
+            const stopButton = buttons.find(btn => 
+                btn.getAttribute('aria-label')?.toLowerCase().includes('stop') ||
+                btn.textContent?.toLowerCase().includes('stop')
+            );
+            return !stopButton || stopButton.disabled || !stopButton.offsetParent;
+        }""", timeout=60000)
+        
+        page.wait_for_timeout(2000)
+        logger.info("Response completed")
+        return True
+    except PlaywrightTimeout:
+        logger.warning("Timeout waiting for response completion")
+        return False
+
+def download_image(url):
+    """Download image from URL and save to temp file"""
+    try:
+        response = requests.get(url, timeout=30)
+        response.raise_for_status()
+        
+        ext = url.split('.')[-1].split('?')[0] or 'jpg'
+        if ext not in ['jpg', 'jpeg', 'png', 'gif', 'webp']:
+            ext = 'jpg'
+        
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=f'.{ext}')
+        temp_file.write(response.content)
+        temp_file.close()
+        
+        logger.info(f"Downloaded image to {temp_file.name}")
+        return temp_file.name
+    except Exception as e:
+        logger.error(f"Failed to download image: {str(e)}")
+        return None
 
 @app.route('/gemini', methods=['GET'])
 def gemini_chat():
@@ -70,36 +124,82 @@ def gemini_chat():
             page = context.new_page()
             
             logger.info(f"Navigating to Gemini with message: {chat_message}")
-            page.goto('https://gemini.google.com/u/5/app?pageId=none', timeout=30000)
+            page.goto('https://gemini.google.com/app', timeout=60000)
+            page.wait_for_load_state('networkidle')
             page.wait_for_timeout(3000)
             
-            # Try to find the input field
+            if check_login_required(page):
+                browser.close()
+                return jsonify({
+                    'status': 'error',
+                    'message': 'Authentication failed. Cookies may be invalid or expired.',
+                    'hint': 'Please update your cookies in account.txt'
+                }), 401
+            
             try:
-                input_selector = 'rich-textarea[aria-label*="prompt"], textarea[aria-label*="prompt"], div[contenteditable="true"]'
-                page.wait_for_selector(input_selector, timeout=10000)
-                page.fill(input_selector, chat_message)
+                input_selectors = [
+                    'rich-textarea[placeholder]',
+                    'div[contenteditable="true"][role="textbox"]',
+                    'textarea[placeholder*="prompt"]',
+                    'div.ql-editor[contenteditable="true"]'
+                ]
+                
+                input_element = None
+                for selector in input_selectors:
+                    try:
+                        element = page.wait_for_selector(selector, timeout=5000)
+                        if element:
+                            input_element = element
+                            logger.info(f"Found input using selector: {selector}")
+                            break
+                    except PlaywrightTimeout:
+                        continue
+                
+                if not input_element:
+                    raise Exception("Could not find input field")
+                
+                input_element.click()
+                page.wait_for_timeout(500)
+                input_element.fill(chat_message)
                 page.wait_for_timeout(500)
                 
-                # Try to submit
-                page.keyboard.press('Enter')
-                page.wait_for_timeout(5000)
+                send_button = page.locator('button[aria-label*="Send"], button:has-text("Send")').first
+                if send_button.count() > 0:
+                    send_button.click()
+                else:
+                    page.keyboard.press('Enter')
                 
-                # Wait for response
-                response_selector = 'div[data-test-id*="response"], .model-response, message-content'
-                page.wait_for_selector(response_selector, timeout=30000)
                 page.wait_for_timeout(2000)
                 
-                # Extract response
-                response_elements = page.query_selector_all(response_selector)
-                response_text = response_elements[-1].inner_text() if response_elements else "No response received"
+                wait_for_response_complete(page)
+                
+                response_selectors = [
+                    'div[data-message-author-role="model"]',
+                    'div.model-response-text',
+                    'div[class*="response"] div[class*="message-content"]'
+                ]
+                
+                response_text = None
+                for selector in response_selectors:
+                    elements = page.locator(selector).all()
+                    if elements:
+                        response_text = elements[-1].inner_text()
+                        if response_text and len(response_text.strip()) > 0:
+                            break
                 
                 browser.close()
                 
-                return jsonify({
-                    'status': 'success',
-                    'chat': chat_message,
-                    'response': response_text
-                })
+                if response_text and len(response_text.strip()) > 0:
+                    return jsonify({
+                        'status': 'success',
+                        'chat': chat_message,
+                        'response': response_text.strip()
+                    })
+                else:
+                    return jsonify({
+                        'status': 'error',
+                        'message': 'No valid response received from Gemini'
+                    }), 500
                 
             except Exception as e:
                 browser.close()
@@ -107,7 +207,7 @@ def gemini_chat():
                 return jsonify({
                     'status': 'error',
                     'message': f'Failed to interact with Gemini: {str(e)}',
-                    'hint': 'Make sure cookies are valid and Gemini UI has not changed'
+                    'hint': 'Gemini UI may have changed. Check logs for details.'
                 }), 500
                 
     except Exception as e:
@@ -134,25 +234,72 @@ def generate_image():
             page = context.new_page()
             
             logger.info(f"Generating image with prompt: {prompt}")
-            page.goto('https://gemini.google.com/u/5/app?pageId=none', timeout=30000)
+            page.goto('https://gemini.google.com/app', timeout=60000)
+            page.wait_for_load_state('networkidle')
             page.wait_for_timeout(3000)
             
+            if check_login_required(page):
+                browser.close()
+                return jsonify({
+                    'status': 'error',
+                    'message': 'Authentication failed. Cookies may be invalid or expired.',
+                    'hint': 'Please update your cookies in account.txt'
+                }), 401
+            
             try:
-                # Send image generation prompt
-                input_selector = 'rich-textarea[aria-label*="prompt"], textarea[aria-label*="prompt"], div[contenteditable="true"]'
-                page.wait_for_selector(input_selector, timeout=10000)
-                page.fill(input_selector, f"Generate an image: {prompt}")
+                input_selectors = [
+                    'rich-textarea[placeholder]',
+                    'div[contenteditable="true"][role="textbox"]',
+                    'textarea[placeholder*="prompt"]',
+                    'div.ql-editor[contenteditable="true"]'
+                ]
+                
+                input_element = None
+                for selector in input_selectors:
+                    try:
+                        element = page.wait_for_selector(selector, timeout=5000)
+                        if element:
+                            input_element = element
+                            logger.info(f"Found input using selector: {selector}")
+                            break
+                    except PlaywrightTimeout:
+                        continue
+                
+                if not input_element:
+                    raise Exception("Could not find input field")
+                
+                input_element.click()
+                page.wait_for_timeout(500)
+                input_element.fill(f"Generate an image: {prompt}")
                 page.wait_for_timeout(500)
                 
-                page.keyboard.press('Enter')
-                page.wait_for_timeout(10000)  # Wait longer for image generation
+                send_button = page.locator('button[aria-label*="Send"], button:has-text("Send")').first
+                if send_button.count() > 0:
+                    send_button.click()
+                else:
+                    page.keyboard.press('Enter')
                 
-                # Try to find generated image
-                image_selector = 'img[src*="googleusercontent"], img[alt*="generated"]'
-                page.wait_for_selector(image_selector, timeout=30000)
+                page.wait_for_timeout(3000)
                 
-                images = page.query_selector_all(image_selector)
-                image_urls = [img.get_attribute('src') for img in images if img.get_attribute('src')]
+                wait_for_response_complete(page)
+                
+                page.wait_for_timeout(2000)
+                
+                image_selectors = [
+                    'img[src*="googleusercontent.com"]',
+                    'img[src*="gemini"]',
+                    'div[data-message-author-role="model"] img'
+                ]
+                
+                image_urls = []
+                for selector in image_selectors:
+                    images = page.locator(selector).all()
+                    for img in images:
+                        src = img.get_attribute('src')
+                        if src and ('http' in src) and src not in image_urls:
+                            image_urls.append(src)
+                    if image_urls:
+                        break
                 
                 browser.close()
                 
@@ -165,7 +312,7 @@ def generate_image():
                 else:
                     return jsonify({
                         'status': 'error',
-                        'message': 'No images generated'
+                        'message': 'No images generated. Gemini may not support image generation in this session.'
                     }), 500
                     
             except Exception as e:
@@ -195,52 +342,159 @@ def edit_image():
             'message': 'Missing parameters. Use /gedit?imgUrl=image_url&prompt=edit_instructions'
         }), 400
     
+    image_file = download_image(img_url)
+    if not image_file:
+        return jsonify({
+            'status': 'error',
+            'message': 'Failed to download image from provided URL'
+        }), 400
+    
     try:
         with sync_playwright() as p:
             browser, context = setup_browser_context(p)
             page = context.new_page()
             
-            logger.info(f"Editing image: {img_url} with prompt: {prompt}")
-            page.goto('https://gemini.google.com/u/5/app?pageId=none', timeout=30000)
+            logger.info(f"Editing image with prompt: {prompt}")
+            page.goto('https://gemini.google.com/app', timeout=60000)
+            page.wait_for_load_state('networkidle')
             page.wait_for_timeout(3000)
             
+            if check_login_required(page):
+                browser.close()
+                os.unlink(image_file)
+                return jsonify({
+                    'status': 'error',
+                    'message': 'Authentication failed. Cookies may be invalid or expired.',
+                    'hint': 'Please update your cookies in account.txt'
+                }), 401
+            
             try:
-                # Try to upload image via URL (this depends on Gemini's UI)
-                input_selector = 'rich-textarea[aria-label*="prompt"], textarea[aria-label*="prompt"], div[contenteditable="true"]'
-                page.wait_for_selector(input_selector, timeout=10000)
+                upload_selectors = [
+                    'button[aria-label*="Upload"], button[aria-label*="upload"]',
+                    'button:has-text("Upload")',
+                    'input[type="file"][accept*="image"]',
+                    'button[aria-label*="Add"]'
+                ]
                 
-                # Send edit request with image URL
-                edit_message = f"Edit this image {img_url} according to: {prompt}"
-                page.fill(input_selector, edit_message)
+                file_input = None
+                for selector in upload_selectors:
+                    try:
+                        if 'input[type="file"]' in selector:
+                            file_input = page.locator(selector).first
+                            if file_input.count() > 0:
+                                logger.info(f"Found file input: {selector}")
+                                break
+                        else:
+                            button = page.locator(selector).first
+                            if button.count() > 0:
+                                button.click()
+                                page.wait_for_timeout(500)
+                                file_input = page.locator('input[type="file"]').first
+                                if file_input.count() > 0:
+                                    logger.info(f"Found file input after clicking: {selector}")
+                                    break
+                    except:
+                        continue
+                
+                if not file_input or file_input.count() == 0:
+                    file_input = page.locator('input[type="file"]').first
+                
+                if file_input.count() > 0:
+                    file_input.set_input_files(image_file)
+                    page.wait_for_timeout(2000)
+                else:
+                    raise Exception("Could not find file upload button")
+                
+                input_selectors = [
+                    'rich-textarea[placeholder]',
+                    'div[contenteditable="true"][role="textbox"]',
+                    'textarea[placeholder*="prompt"]',
+                    'div.ql-editor[contenteditable="true"]'
+                ]
+                
+                input_element = None
+                for selector in input_selectors:
+                    try:
+                        element = page.wait_for_selector(selector, timeout=5000)
+                        if element:
+                            input_element = element
+                            logger.info(f"Found input using selector: {selector}")
+                            break
+                    except PlaywrightTimeout:
+                        continue
+                
+                if not input_element:
+                    raise Exception("Could not find input field")
+                
+                input_element.click()
+                page.wait_for_timeout(500)
+                input_element.fill(prompt)
                 page.wait_for_timeout(500)
                 
-                page.keyboard.press('Enter')
-                page.wait_for_timeout(10000)
+                send_button = page.locator('button[aria-label*="Send"], button:has-text("Send")').first
+                if send_button.count() > 0:
+                    send_button.click()
+                else:
+                    page.keyboard.press('Enter')
                 
-                # Wait for edited image
-                image_selector = 'img[src*="googleusercontent"], img[alt*="edited"]'
-                page.wait_for_selector(image_selector, timeout=30000)
+                page.wait_for_timeout(3000)
                 
-                images = page.query_selector_all(image_selector)
-                image_urls = [img.get_attribute('src') for img in images if img.get_attribute('src')]
+                wait_for_response_complete(page)
+                
+                page.wait_for_timeout(2000)
+                
+                image_selectors = [
+                    'img[src*="googleusercontent.com"]',
+                    'img[src*="gemini"]',
+                    'div[data-message-author-role="model"] img'
+                ]
+                
+                result_image_urls = []
+                for selector in image_selectors:
+                    images = page.locator(selector).all()
+                    for img in images:
+                        src = img.get_attribute('src')
+                        if src and ('http' in src) and src not in result_image_urls:
+                            result_image_urls.append(src)
+                    if result_image_urls:
+                        break
+                
+                response_selectors = [
+                    'div[data-message-author-role="model"]',
+                    'div.model-response-text'
+                ]
+                
+                response_text = None
+                for selector in response_selectors:
+                    elements = page.locator(selector).all()
+                    if elements:
+                        response_text = elements[-1].inner_text()
+                        if response_text and len(response_text.strip()) > 0:
+                            break
                 
                 browser.close()
+                os.unlink(image_file)
                 
-                if image_urls:
-                    return jsonify({
+                if result_image_urls or response_text:
+                    result = {
                         'status': 'success',
                         'original_image': img_url,
-                        'prompt': prompt,
-                        'edited_images': image_urls
-                    })
+                        'prompt': prompt
+                    }
+                    if result_image_urls:
+                        result['edited_images'] = result_image_urls
+                    if response_text:
+                        result['response'] = response_text.strip()
+                    return jsonify(result)
                 else:
                     return jsonify({
                         'status': 'error',
-                        'message': 'No edited images received'
+                        'message': 'No edited images or response received from Gemini'
                     }), 500
                     
             except Exception as e:
                 browser.close()
+                os.unlink(image_file)
                 logger.error(f"Image editing error: {str(e)}")
                 return jsonify({
                     'status': 'error',
@@ -248,6 +502,8 @@ def edit_image():
                 }), 500
                 
     except Exception as e:
+        if image_file and os.path.exists(image_file):
+            os.unlink(image_file)
         logger.error(f"Browser error: {str(e)}")
         return jsonify({
             'status': 'error',
