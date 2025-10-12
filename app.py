@@ -10,6 +10,8 @@ import json
 import threading
 import time
 from datetime import datetime, timedelta
+import atexit
+from contextlib import contextmanager
 
 os.environ['PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS'] = 'true'
 
@@ -22,8 +24,25 @@ STATIC_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Global browser instance and cookie cache for performance
+_browser_instance = None
+_browser_context = None
+_playwright_instance = None
+_cached_cookies = None
+_cookies_last_loaded = None
+_browser_lock = threading.RLock()  # Use reentrant lock to allow nested acquisition
+_active_pages = 0
+_needs_refresh = False
+
 def load_cookies():
     """Load cookies from account.txt file or ACCOUNT_COOKIES env var - supports JSON, Netscape, and name=value formats"""
+    global _cached_cookies, _cookies_last_loaded
+    
+    # Return cached cookies if loaded recently (within 5 minutes)
+    if _cached_cookies is not None and _cookies_last_loaded is not None:
+        if (datetime.now() - _cookies_last_loaded).total_seconds() < 300:
+            return _cached_cookies
+    
     cookies = []
     
     # Try to get cookies from environment variable first (for Vercel deployment)
@@ -81,6 +100,9 @@ def load_cookies():
                             logger.info(f"Loaded JSON cookie: {cookie['name']}")
                     
                     logger.info(f"Total cookies loaded from JSON: {len(cookies)}")
+                    # Cache cookies for future requests
+                    _cached_cookies = cookies
+                    _cookies_last_loaded = datetime.now()
                     return cookies
             except json.JSONDecodeError:
                 pass
@@ -132,11 +154,17 @@ def load_cookies():
                     logger.info(f"Loaded simple cookie: {name.strip()}")
         
             logger.info(f"Total cookies loaded: {len(cookies)}")
+            # Cache cookies for future requests
+            _cached_cookies = cookies
+            _cookies_last_loaded = datetime.now()
             return cookies
         except Exception as e:
             logger.error(f"Error parsing cookies: {str(e)}")
             return []
     
+    # Cache cookies for future requests
+    _cached_cookies = cookies
+    _cookies_last_loaded = datetime.now()
     return cookies
 
 def cleanup_old_images(max_age_hours=24):
@@ -178,6 +206,132 @@ def start_cleanup_thread(interval_hours=6, max_age_hours=24):
     )
     cleanup_thread.start()
     logger.info(f"Started background cleanup thread (interval: {interval_hours}h, max_age: {max_age_hours}h)")
+
+def get_or_create_browser():
+    """Get existing browser or create new one - thread safe"""
+    global _browser_instance, _browser_context, _playwright_instance, _cookies_last_loaded, _needs_refresh, _active_pages
+    
+    with _browser_lock:
+        # Check if we need to refresh cookies (cache expired)
+        if _browser_context is not None and _cookies_last_loaded is not None:
+            # If cookies cache has expired (older than 5 minutes), mark for refresh
+            if (datetime.now() - _cookies_last_loaded).total_seconds() >= 300:
+                if not _needs_refresh:
+                    logger.info("Cookie cache expired, marking for refresh")
+                    _needs_refresh = True
+        
+        # Only refresh if no active pages are using the context
+        if _needs_refresh and _active_pages == 0:
+            logger.info("Refreshing browser context with fresh cookies (no active pages)")
+            if _browser_context is not None:
+                try:
+                    _browser_context.close()
+                except:
+                    pass
+                _browser_context = None
+            _needs_refresh = False
+        
+        # Create browser if needed
+        if _browser_instance is None or _playwright_instance is None:
+            logger.info("Creating new persistent browser instance")
+            if _playwright_instance is None:
+                _playwright_instance = sync_playwright().start()
+            if _browser_instance is None:
+                _browser_instance = _playwright_instance.chromium.launch(
+                    headless=True,
+                    args=[
+                        '--disable-blink-features=AutomationControlled',
+                        '--disable-gpu',
+                        '--disable-software-rasterizer',
+                        '--disable-dev-shm-usage',
+                        '--no-sandbox'
+                    ]
+                )
+        
+        # Create new context with fresh cookies if needed
+        if _browser_context is None:
+            _browser_context = _browser_instance.new_context(
+                viewport={'width': 1920, 'height': 1080},
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            )
+            
+            cookies = load_cookies()
+            if cookies:
+                try:
+                    logger.info(f"Adding {len(cookies)} cookies to browser context")
+                    _browser_context.add_cookies(cookies)
+                    logger.info("Cookies successfully added")
+                except Exception as e:
+                    logger.error(f"Error adding cookies: {str(e)}")
+        
+        return _browser_instance, _browser_context
+
+def close_browser():
+    """Close persistent browser instance"""
+    global _browser_instance, _browser_context, _playwright_instance
+    
+    with _browser_lock:
+        if _browser_context:
+            try:
+                _browser_context.close()
+            except:
+                pass
+            _browser_context = None
+        
+        if _browser_instance:
+            try:
+                _browser_instance.close()
+            except:
+                pass
+            _browser_instance = None
+        
+        if _playwright_instance:
+            try:
+                _playwright_instance.stop()
+            except:
+                pass
+            _playwright_instance = None
+    
+    logger.info("Browser instance closed")
+
+@contextmanager
+def get_browser_page():
+    """Context manager to get a browser page from the persistent browser"""
+    global _active_pages
+    
+    page = None
+    # Hold lock through page creation to prevent context refresh during new_page()
+    with _browser_lock:
+        browser, context = get_or_create_browser()
+        _active_pages += 1
+        try:
+            page = context.new_page()
+        except Exception as e:
+            # Roll back active pages count if page creation fails
+            _active_pages -= 1
+            logger.error(f"Failed to create page: {str(e)}")
+            raise
+    
+    page.set_default_timeout(60000)
+    
+    try:
+        yield page
+    finally:
+        try:
+            if page:
+                page.close()
+        except:
+            pass
+        
+        # Decrement active page count and check if refresh is needed
+        with _browser_lock:
+            _active_pages -= 1
+            # If this was the last page and refresh is needed, trigger it on next request
+            if _active_pages == 0 and _needs_refresh:
+                logger.info("Last page closed, refresh will occur on next request")
+
+# Register cleanup on exit
+atexit.register(close_browser)
 
 def setup_browser_context(playwright):
     """Setup browser with cookies"""
@@ -243,9 +397,9 @@ def wait_for_response_complete(page):
                 btn.textContent?.toLowerCase().includes('stop')
             );
             return !stopButton || stopButton.disabled || !stopButton.offsetParent;
-        }""", timeout=60000)
+        }""", timeout=45000)
         
-        page.wait_for_timeout(2000)
+        page.wait_for_timeout(800)
         logger.info("Response completed")
         return True
     except PlaywrightTimeout:
@@ -320,17 +474,12 @@ def gemini_chat():
         }), 400
     
     try:
-        with sync_playwright() as p:
-            browser, context = setup_browser_context(p)
-            page = context.new_page()
-            page.set_default_timeout(90000)
-            
+        with get_browser_page() as page:
             logger.info(f"Navigating to Gemini with message: {chat_message}")
-            page.goto('https://gemini.google.com/app', timeout=90000, wait_until='domcontentloaded')
-            page.wait_for_timeout(5000)
+            page.goto('https://gemini.google.com/app', timeout=60000, wait_until='domcontentloaded')
+            page.wait_for_timeout(1500)
             
             if check_login_required(page):
-                browser.close()
                 return jsonify({
                     'status': 'error',
                     'message': 'Authentication failed. Cookies may be invalid or expired.',
@@ -350,7 +499,7 @@ def gemini_chat():
                 input_element = None
                 for selector in input_selectors:
                     try:
-                        element = page.wait_for_selector(selector, timeout=10000, state='visible')
+                        element = page.wait_for_selector(selector, timeout=8000, state='visible')
                         if element:
                             input_element = element
                             logger.info(f"Found input using selector: {selector}")
@@ -364,9 +513,9 @@ def gemini_chat():
                     raise Exception("Could not find input field. Page may have changed.")
                 
                 input_element.click()
-                page.wait_for_timeout(1000)
+                page.wait_for_timeout(300)
                 input_element.type(chat_message)
-                page.wait_for_timeout(1000)
+                page.wait_for_timeout(300)
                 
                 # Try multiple send strategies
                 send_success = False
@@ -393,7 +542,7 @@ def gemini_chat():
                     raise Exception("Could not send message")
                 
                 # Wait for response to start appearing
-                page.wait_for_timeout(3000)
+                page.wait_for_timeout(1000)
                 
                 # Wait for response to complete
                 wait_for_response_complete(page)
@@ -425,7 +574,7 @@ def gemini_chat():
                 if not response_text:
                     try:
                         # Wait a bit more
-                        page.wait_for_timeout(2000)
+                        page.wait_for_timeout(1000)
                         # Try to get the last message-like element
                         all_text_elements = page.locator('div[class*="content"], div[class*="message"], div[jsname]').all()
                         for elem in reversed(all_text_elements):
@@ -438,17 +587,15 @@ def gemini_chat():
                         pass
                 
                 if response_text and len(response_text.strip()) > 0:
-                    browser.close()
                     return jsonify({
                         'status': 'success',
                         'chat': chat_message,
                         'response': response_text.strip()
                     })
                 else:
-                    # Save debug screenshot before closing browser
+                    # Save debug screenshot
                     page.screenshot(path='/tmp/gemini_no_response.png')
                     logger.error("Could not extract response. Screenshot saved to /tmp/gemini_no_response.png")
-                    browser.close()
                     return jsonify({
                         'status': 'error',
                         'message': 'No valid response received from Gemini',
@@ -456,7 +603,6 @@ def gemini_chat():
                     }), 500
                 
             except Exception as e:
-                browser.close()
                 logger.error(f"Scraping error: {str(e)}")
                 return jsonify({
                     'status': 'error',
@@ -483,17 +629,12 @@ def generate_image():
         }), 400
     
     try:
-        with sync_playwright() as p:
-            browser, context = setup_browser_context(p)
-            page = context.new_page()
-            page.set_default_timeout(90000)
-            
+        with get_browser_page() as page:
             logger.info(f"Generating image with prompt: {prompt}")
-            page.goto('https://gemini.google.com/app', timeout=90000, wait_until='domcontentloaded')
-            page.wait_for_timeout(5000)
+            page.goto('https://gemini.google.com/app', timeout=60000, wait_until='domcontentloaded')
+            page.wait_for_timeout(1500)
             
             if check_login_required(page):
-                browser.close()
                 return jsonify({
                     'status': 'error',
                     'message': 'Authentication failed. Cookies may be invalid or expired.',
@@ -523,9 +664,9 @@ def generate_image():
                     raise Exception("Could not find input field")
                 
                 input_element.click()
-                page.wait_for_timeout(500)
+                page.wait_for_timeout(200)
                 input_element.fill(f"Generate an image: {prompt}")
-                page.wait_for_timeout(500)
+                page.wait_for_timeout(200)
                 
                 send_button = page.locator('button[aria-label*="Send"], button:has-text("Send")').first
                 if send_button.count() > 0:
@@ -533,11 +674,11 @@ def generate_image():
                 else:
                     page.keyboard.press('Enter')
                 
-                page.wait_for_timeout(3000)
+                page.wait_for_timeout(1000)
                 
                 wait_for_response_complete(page)
                 
-                page.wait_for_timeout(2000)
+                page.wait_for_timeout(500)
                 
                 image_selectors = [
                     'img[src*="googleusercontent.com"]',
@@ -566,8 +707,6 @@ def generate_image():
                             local_url = f"{base_url}/images/{filename}"
                             local_image_urls.append(local_url)
                 
-                browser.close()
-                
                 if local_image_urls:
                     return jsonify({
                         'status': 'success',
@@ -581,7 +720,6 @@ def generate_image():
                     }), 500
                     
             except Exception as e:
-                browser.close()
                 logger.error(f"Image generation error: {str(e)}")
                 return jsonify({
                     'status': 'error',
@@ -615,17 +753,12 @@ def edit_image():
         }), 400
     
     try:
-        with sync_playwright() as p:
-            browser, context = setup_browser_context(p)
-            page = context.new_page()
-            page.set_default_timeout(90000)
-            
+        with get_browser_page() as page:
             logger.info(f"Editing image with prompt: {prompt}")
-            page.goto('https://gemini.google.com/app', timeout=90000, wait_until='domcontentloaded')
-            page.wait_for_timeout(5000)
+            page.goto('https://gemini.google.com/app', timeout=60000, wait_until='domcontentloaded')
+            page.wait_for_timeout(1500)
             
             if check_login_required(page):
-                browser.close()
                 os.unlink(image_file)
                 return jsonify({
                     'status': 'error',
@@ -653,7 +786,7 @@ def edit_image():
                             button = page.locator(selector).first
                             if button.count() > 0:
                                 button.click()
-                                page.wait_for_timeout(500)
+                                page.wait_for_timeout(300)
                                 file_input = page.locator('input[type="file"]').first
                                 if file_input.count() > 0:
                                     logger.info(f"Found file input after clicking: {selector}")
@@ -666,7 +799,7 @@ def edit_image():
                 
                 if file_input.count() > 0:
                     file_input.set_input_files(image_file)
-                    page.wait_for_timeout(2000)
+                    page.wait_for_timeout(800)
                 else:
                     raise Exception("Could not find file upload button")
                 
@@ -692,9 +825,9 @@ def edit_image():
                     raise Exception("Could not find input field")
                 
                 input_element.click()
-                page.wait_for_timeout(500)
+                page.wait_for_timeout(200)
                 input_element.fill(prompt)
-                page.wait_for_timeout(500)
+                page.wait_for_timeout(200)
                 
                 send_button = page.locator('button[aria-label*="Send"], button:has-text("Send")').first
                 if send_button.count() > 0:
@@ -702,11 +835,11 @@ def edit_image():
                 else:
                     page.keyboard.press('Enter')
                 
-                page.wait_for_timeout(3000)
+                page.wait_for_timeout(1000)
                 
                 wait_for_response_complete(page)
                 
-                page.wait_for_timeout(2000)
+                page.wait_for_timeout(500)
                 
                 image_selectors = [
                     'img[src*="googleusercontent.com"]',
@@ -748,7 +881,6 @@ def edit_image():
                         if response_text and len(response_text.strip()) > 0:
                             break
                 
-                browser.close()
                 os.unlink(image_file)
                 
                 if local_result_urls or response_text:
@@ -769,7 +901,6 @@ def edit_image():
                     }), 500
                     
             except Exception as e:
-                browser.close()
                 os.unlink(image_file)
                 logger.error(f"Image editing error: {str(e)}")
                 return jsonify({
@@ -808,12 +939,10 @@ def health():
 def debug_cookies():
     """Debug endpoint to check cookies in browser"""
     try:
-        with sync_playwright() as p:
-            browser, context = setup_browser_context(p)
-            page = context.new_page()
-            
+        browser, context = get_or_create_browser()
+        with get_browser_page() as page:
             page.goto('https://gemini.google.com/app', timeout=30000)
-            page.wait_for_timeout(3000)
+            page.wait_for_timeout(1500)
             
             browser_cookies = context.cookies()
             
@@ -834,8 +963,6 @@ def debug_cookies():
                 input_found = input_element is not None
             except:
                 pass
-            
-            browser.close()
             
             return jsonify({
                 'status': 'success',
