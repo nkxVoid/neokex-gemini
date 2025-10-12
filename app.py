@@ -636,18 +636,18 @@ def generate_image():
                     page.evaluate("""() => {
                         window.scrollTo(0, document.body.scrollHeight);
                     }""")
-                    page.wait_for_timeout(1000)  # Wait 1 second for lazy-loaded images
+                    page.wait_for_timeout(2000)  # Wait 2 seconds for lazy-loaded images
                     page.evaluate("""() => {
                         window.scrollTo(0, 0);
                     }""")
-                    page.wait_for_timeout(500)  # Brief wait after scrolling back up
+                    page.wait_for_timeout(1000)  # Wait after scrolling back up
                 except:
                     pass
                 
                 image_selectors = [
                     'img[src*="googleusercontent.com"]',
                     'img[src*="gemini"]',
-                    'div[data-message-author-role="model"] img'
+                    'img[src*="http"]'
                 ]
                 
                 google_image_urls = []
@@ -658,7 +658,15 @@ def generate_image():
                         for img in images:
                             src = img.get_attribute('src')
                             if src and ('http' in src):
-                                google_image_urls.append(src)
+                                # Filter out profile pictures and UI icons
+                                # Profile pics have patterns like: /a/ACg8oc... or size params like s64-c
+                                if ('/a/ACg8oc' not in src and '/a/default' not in src and 
+                                    's64-c' not in src and 's32-c' not in src and 
+                                    's96-c' not in src and 's128-c' not in src and
+                                    's256-c' not in src and 's512-c' not in src):
+                                    # Avoid duplicates
+                                    if src not in google_image_urls:
+                                        google_image_urls.append(src)
                         if google_image_urls:
                             break
                 
@@ -807,18 +815,18 @@ def edit_image():
                     page.evaluate("""() => {
                         window.scrollTo(0, document.body.scrollHeight);
                     }""")
-                    page.wait_for_timeout(1000)  # Wait 1 second for lazy-loaded images
+                    page.wait_for_timeout(2000)  # Wait 2 seconds for lazy-loaded images
                     page.evaluate("""() => {
                         window.scrollTo(0, 0);
                     }""")
-                    page.wait_for_timeout(500)  # Brief wait after scrolling back up
+                    page.wait_for_timeout(1000)  # Wait after scrolling back up
                 except:
                     pass
                 
                 image_selectors = [
                     'img[src*="googleusercontent.com"]',
                     'img[src*="gemini"]',
-                    'div[data-message-author-role="model"] img'
+                    'img[src*="http"]'
                 ]
                 
                 google_result_urls = []
@@ -829,7 +837,15 @@ def edit_image():
                         for img in images:
                             src = img.get_attribute('src')
                             if src and ('http' in src):
-                                google_result_urls.append(src)
+                                # Filter out profile pictures and UI icons
+                                # Profile pics have patterns like: /a/ACg8oc... or size params like s64-c
+                                if ('/a/ACg8oc' not in src and '/a/default' not in src and 
+                                    's64-c' not in src and 's32-c' not in src and 
+                                    's96-c' not in src and 's128-c' not in src and
+                                    's256-c' not in src and 's512-c' not in src):
+                                    # Avoid duplicates
+                                    if src not in google_result_urls:
+                                        google_result_urls.append(src)
                         if google_result_urls:
                             break
                 

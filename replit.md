@@ -16,13 +16,19 @@ This project allows users to programmatically interact with Google Gemini throug
 
 ## Recent Changes
 *October 12, 2025*
-- **Render Multiple Images Fix (Latest):**
-  - **FIXED**: API now returns ALL images on Render (was only returning 1 image)
-  - Root cause: Render's reduced viewport (1024x600) prevented all images from loading into DOM
-  - Added automatic page scrolling after response completion to trigger lazy-loading
-  - Scrolls to bottom, waits 1 second for images to load, then scrolls back to top
+- **Multi-Image Collection & Profile Picture Filter (Latest):**
+  - **FIXED**: API now correctly collects all Gemini-generated images while filtering out UI elements
+  - Added profile picture detection and filtering (excludes images with `/a/ACg8oc`, size params like `s64-c`, `s32-c`, etc.)
+  - Added URL deduplication to prevent collecting the same image multiple times
+  - Increased scroll wait times: 2 seconds for lazy-loading, 1 second after scroll-back
+  - Added broader image selectors with smart filtering instead of restrictive CSS selectors
   - Applied to both /gimage and /gedit endpoints
-  - **Result: Render now returns multiple images just like Replit does**
+  - **Result: API collects only actual generated images, filtering out profile pics and UI icons**
+- **Render Storage Compatibility Note:**
+  - Render's free tier uses ephemeral storage - saved images persist only during container lifetime
+  - Images are deleted on container restart/redeploy, making URLs invalid after restart
+  - For production use, consider: (1) base64 data URLs or (2) external storage (S3/Cloudinary)
+  - Current implementation works reliably within a single container session
 - **Render Cloud Compatibility Fix:**
   - **FIXED**: "Could not find input field" error on Render deployment
   - Added networkidle wait state after page load for cloud environments
