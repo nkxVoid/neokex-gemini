@@ -16,6 +16,15 @@ This project allows users to programmatically interact with Google Gemini throug
 
 ## Recent Changes
 *October 12, 2025*
+- **Image URL Fix (Latest):**
+  - **FIXED**: Image URLs now work correctly on both Replit and Render deployments
+  - Updated `get_base_url()` to properly detect platform (Replit, Render, or other)
+  - Function now checks X-Forwarded-Proto header for proxied requests
+  - Forces HTTPS for production environments (non-localhost)
+  - **FIXED**: Multiple image URL issue - endpoints now return only ONE image
+  - Modified image detection to select only the last/most recent generated image
+  - Prevents returning duplicate/thumbnail images
+  - **Result: API now returns single, valid, publicly accessible image URLs**
 - Initial project setup with Python 3.11
 - Installed Flask, Playwright, requests, and python-dotenv
 - Created Flask API server with three endpoints
