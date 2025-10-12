@@ -16,7 +16,13 @@ This project allows users to programmatically interact with Google Gemini throug
 
 ## Recent Changes
 *October 12, 2025*
-- **Image URL Fix (Latest):**
+- **Image Format Detection Fix (Latest):**
+  - **FIXED**: Images now display correctly with proper file extensions
+  - Added automatic image format detection from Content-Type headers
+  - Added binary signature detection as fallback (PNG, JPEG, WebP, GIF)
+  - Images are now saved with correct extensions matching their actual format
+  - **Result: All images display correctly in browsers - no more invalid/corrupted images**
+- **Image URL Fix:**
   - **FIXED**: Image URLs now work correctly on both Replit and Render deployments
   - Updated `get_base_url()` to properly detect platform (Replit, Render, or other)
   - Function now checks X-Forwarded-Proto header for proxied requests
