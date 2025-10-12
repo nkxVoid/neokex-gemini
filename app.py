@@ -243,15 +243,8 @@ def download_authenticated_image(page, url):
         
         image_data = response.body()
         
-        # Determine file extension
+        # Always use .jpg extension
         ext = 'jpg'
-        content_type = response.headers.get('content-type', '')
-        if 'png' in content_type:
-            ext = 'png'
-        elif 'webp' in content_type:
-            ext = 'webp'
-        elif 'gif' in content_type:
-            ext = 'gif'
         
         # Generate unique filename
         filename = f"{uuid.uuid4()}.{ext}"
