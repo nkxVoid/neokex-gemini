@@ -29,6 +29,11 @@ This project allows users to programmatically interact with Google Gemini throug
   - All documentation files (README.md, COOKIE_FORMATS.md, FIXES_SUMMARY.md, etc.)
   - pyproject.toml and uv.lock (using requirements.txt only)
   - Old PNG images from static/images directory
+- **Added automatic cleanup system for persistent operation:**
+  - Background thread runs cleanup every 6 hours
+  - Automatically deletes images older than 24 hours
+  - Prevents disk space issues during long-term operation
+  - Temp files are properly cleaned up after each request
 - Project now minimal and production-ready for deployment
 
 ## Project Architecture
@@ -70,6 +75,11 @@ This project allows users to programmatically interact with Google Gemini throug
 - Headless browser operation
 - **All images served as .jpg format only**
 - **Docker-ready for Render deployment**
+- **Automatic cleanup system:**
+  - Background thread cleans up old images every 6 hours
+  - Deletes images older than 24 hours automatically
+  - Temp files cleaned up immediately after use
+  - Prevents disk space issues for long-term operation
 
 ### Authentication System
 - Reads cookies from `account.txt` file
