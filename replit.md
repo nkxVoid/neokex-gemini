@@ -20,17 +20,16 @@ This project allows users to programmatically interact with Google Gemini throug
 - Installed Flask, Playwright, requests, and python-dotenv
 - Created Flask API server with three endpoints
 - Implemented browser automation with Playwright
-- Added cookie loading system from account.txt with dual format support:
-  - Simple name=value format for manual entry
-  - Netscape format for browser extension exports
-- Fixed critical bugs in browser automation:
-  - Replaced Playwright-specific selectors with standard JavaScript
-  - Added proper image download and upload for /gedit endpoint
-  - Implemented login detection and response verification
-  - Multiple selector fallbacks for reliability
+- Added cookie loading system from account.txt with dual format support
+- Fixed critical bugs in browser automation
 - Configured API Server workflow on port 5000
-- Created comprehensive README documentation
-- Added .gitignore for Python and sensitive files
+- **Modified image handling to only save .jpg format (removed .png support)**
+- **Added Docker configuration for Render deployment**
+- **Cleaned up project by removing:**
+  - All documentation files (README.md, COOKIE_FORMATS.md, FIXES_SUMMARY.md, etc.)
+  - pyproject.toml and uv.lock (using requirements.txt only)
+  - Old PNG images from static/images directory
+- Project now minimal and production-ready for deployment
 
 ## Project Architecture
 
@@ -46,10 +45,13 @@ This project allows users to programmatically interact with Google Gemini throug
 .
 ├── app.py                 # Main Flask application with all endpoints
 ├── account.txt           # Cookie storage (user needs to populate)
-├── README.md             # User documentation
+├── requirements.txt      # Python dependencies
+├── Dockerfile            # Docker config for Render deployment
+├── render.yaml           # Render deployment configuration
 ├── replit.md             # Project memory and documentation
-├── .gitignore            # Git ignore rules (includes account.txt)
-└── pyproject.toml        # Python dependencies
+├── .gitignore            # Git ignore rules
+└── static/
+    └── images/           # Downloaded images (.jpg only)
 ```
 
 ### API Endpoints
@@ -66,6 +68,8 @@ This project allows users to programmatically interact with Google Gemini throug
 - JSON response format for all endpoints
 - Error handling and logging
 - Headless browser operation
+- **All images served as .jpg format only**
+- **Docker-ready for Render deployment**
 
 ### Authentication System
 - Reads cookies from `account.txt` file
@@ -111,6 +115,21 @@ This project allows users to programmatically interact with Google Gemini throug
 - Update cookie selectors if authentication fails
 - Check Playwright browser updates for compatibility
 
+## Deployment to Render
+
+### Quick Deploy Steps
+1. Push code to Git repository
+2. Go to Render.com → "New +" → "Blueprint"
+3. Connect repository (Render auto-detects render.yaml)
+4. Add `ACCOUNT_COOKIES` environment variable
+5. Deploy with Docker automatically
+
+### Docker Configuration
+- Uses Python 3.11-slim base image
+- Installs all Chromium system dependencies
+- Playwright browsers installed during build
+- Lightweight and production-ready
+
 ## Dependencies
 
 ### Python Packages
@@ -123,10 +142,7 @@ This project allows users to programmatically interact with Google Gemini throug
 - Playwright Chromium browser installed
 - Python 3.11
 - Port 5000 available
-- System dependencies for browser automation:
-  - xorg.libXcomposite, xorg.libXdamage, xorg.libXfixes
-  - xorg.libxcb, libxkbcommon, mesa
-  - nspr, nss, dbus, atk, at-spi2-atk, alsa-lib
+- Docker for deployment (Render)
 
 ## Troubleshooting
 
