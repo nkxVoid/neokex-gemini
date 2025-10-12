@@ -418,9 +418,9 @@ def wait_for_response_complete(page):
                 btn.textContent?.toLowerCase().includes('stop')
             );
             return !stopButton || stopButton.disabled || !stopButton.offsetParent;
-        }""", timeout=45000, polling=200)
+        }""", timeout=30000, polling=300)
         
-        page.wait_for_timeout(300)
+        page.wait_for_timeout(100)
         logger.info("Response completed")
         return True
     except PlaywrightTimeout:
@@ -497,8 +497,8 @@ def gemini_chat():
     try:
         with get_browser_page() as page:
             logger.info(f"Navigating to Gemini with message: {chat_message}")
-            page.goto('https://gemini.google.com/app', timeout=60000, wait_until='domcontentloaded')
-            page.wait_for_timeout(500)
+            page.goto('https://gemini.google.com/app', timeout=45000, wait_until='domcontentloaded')
+            page.wait_for_timeout(200)
             
             if check_login_required(page):
                 return jsonify({
@@ -520,7 +520,7 @@ def gemini_chat():
                 input_element = None
                 for selector in input_selectors:
                     try:
-                        element = page.wait_for_selector(selector, timeout=8000, state='visible')
+                        element = page.wait_for_selector(selector, timeout=5000, state='visible')
                         if element:
                             input_element = element
                             logger.info(f"Found input using selector: {selector}")
@@ -534,9 +534,9 @@ def gemini_chat():
                     raise Exception("Could not find input field. Page may have changed.")
                 
                 input_element.click()
-                page.wait_for_timeout(100)
+                page.wait_for_timeout(50)
                 input_element.type(chat_message, delay=0)
-                page.wait_for_timeout(100)
+                page.wait_for_timeout(50)
                 
                 # Try multiple send strategies
                 send_success = False
@@ -563,7 +563,7 @@ def gemini_chat():
                     raise Exception("Could not send message")
                 
                 # Wait for response to start appearing
-                page.wait_for_timeout(500)
+                page.wait_for_timeout(200)
                 
                 # Wait for response to complete
                 wait_for_response_complete(page)
@@ -652,8 +652,8 @@ def generate_image():
     try:
         with get_browser_page() as page:
             logger.info(f"Generating image with prompt: {prompt}")
-            page.goto('https://gemini.google.com/app', timeout=60000, wait_until='domcontentloaded')
-            page.wait_for_timeout(500)
+            page.goto('https://gemini.google.com/app', timeout=45000, wait_until='domcontentloaded')
+            page.wait_for_timeout(200)
             
             if check_login_required(page):
                 return jsonify({
@@ -673,7 +673,7 @@ def generate_image():
                 input_element = None
                 for selector in input_selectors:
                     try:
-                        element = page.wait_for_selector(selector, timeout=5000)
+                        element = page.wait_for_selector(selector, timeout=4000)
                         if element:
                             input_element = element
                             logger.info(f"Found input using selector: {selector}")
@@ -685,9 +685,9 @@ def generate_image():
                     raise Exception("Could not find input field")
                 
                 input_element.click()
-                page.wait_for_timeout(100)
+                page.wait_for_timeout(50)
                 input_element.fill(f"Generate an image: {prompt}")
-                page.wait_for_timeout(100)
+                page.wait_for_timeout(50)
                 
                 send_button = page.locator('button[aria-label*="Send"], button:has-text("Send")').first
                 if send_button.count() > 0:
@@ -695,11 +695,11 @@ def generate_image():
                 else:
                     page.keyboard.press('Enter')
                 
-                page.wait_for_timeout(500)
+                page.wait_for_timeout(200)
                 
                 wait_for_response_complete(page)
                 
-                page.wait_for_timeout(300)
+                page.wait_for_timeout(100)
                 
                 image_selectors = [
                     'img[src*="googleusercontent.com"]',
@@ -776,8 +776,8 @@ def edit_image():
     try:
         with get_browser_page() as page:
             logger.info(f"Editing image with prompt: {prompt}")
-            page.goto('https://gemini.google.com/app', timeout=60000, wait_until='domcontentloaded')
-            page.wait_for_timeout(500)
+            page.goto('https://gemini.google.com/app', timeout=45000, wait_until='domcontentloaded')
+            page.wait_for_timeout(200)
             
             if check_login_required(page):
                 os.unlink(image_file)
@@ -807,7 +807,7 @@ def edit_image():
                             button = page.locator(selector).first
                             if button.count() > 0:
                                 button.click()
-                                page.wait_for_timeout(200)
+                                page.wait_for_timeout(100)
                                 file_input = page.locator('input[type="file"]').first
                                 if file_input.count() > 0:
                                     logger.info(f"Found file input after clicking: {selector}")
@@ -820,7 +820,7 @@ def edit_image():
                 
                 if file_input.count() > 0:
                     file_input.set_input_files(image_file)
-                    page.wait_for_timeout(500)
+                    page.wait_for_timeout(200)
                 else:
                     raise Exception("Could not find file upload button")
                 
@@ -834,7 +834,7 @@ def edit_image():
                 input_element = None
                 for selector in input_selectors:
                     try:
-                        element = page.wait_for_selector(selector, timeout=5000)
+                        element = page.wait_for_selector(selector, timeout=4000)
                         if element:
                             input_element = element
                             logger.info(f"Found input using selector: {selector}")
@@ -846,9 +846,9 @@ def edit_image():
                     raise Exception("Could not find input field")
                 
                 input_element.click()
-                page.wait_for_timeout(100)
+                page.wait_for_timeout(50)
                 input_element.fill(prompt)
-                page.wait_for_timeout(100)
+                page.wait_for_timeout(50)
                 
                 send_button = page.locator('button[aria-label*="Send"], button:has-text("Send")').first
                 if send_button.count() > 0:
@@ -856,11 +856,11 @@ def edit_image():
                 else:
                     page.keyboard.press('Enter')
                 
-                page.wait_for_timeout(500)
+                page.wait_for_timeout(200)
                 
                 wait_for_response_complete(page)
                 
-                page.wait_for_timeout(300)
+                page.wait_for_timeout(100)
                 
                 image_selectors = [
                     'img[src*="googleusercontent.com"]',
