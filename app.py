@@ -24,15 +24,13 @@ STATIC_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Global browser instance and cookie cache for performance
-_browser_instance = None
-_browser_context = None
-_playwright_instance = None
+# Global cookie cache for performance
 _cached_cookies = None
 _cookies_last_loaded = None
-_browser_lock = threading.RLock()  # Use reentrant lock to allow nested acquisition
-_active_pages = 0
-_needs_refresh = False
+_cookie_lock = threading.RLock()
+
+# Thread-local storage for browser instances (Playwright is thread-bound)
+_thread_local = threading.local()
 
 def load_cookies():
     """Load cookies from account.txt file or ACCOUNT_COOKIES env var - supports JSON, Netscape, and name=value formats"""
@@ -208,127 +206,107 @@ def start_cleanup_thread(interval_hours=6, max_age_hours=24):
     logger.info(f"Started background cleanup thread (interval: {interval_hours}h, max_age: {max_age_hours}h)")
 
 def get_or_create_browser():
-    """Get existing browser or create new one - thread safe"""
-    global _browser_instance, _browser_context, _playwright_instance, _cookies_last_loaded, _needs_refresh, _active_pages
+    """Get or create thread-local browser instance"""
+    global _cookies_last_loaded
     
-    with _browser_lock:
-        # Check if we need to refresh cookies (cache expired)
-        if _browser_context is not None and _cookies_last_loaded is not None:
-            # If cookies cache has expired (older than 5 minutes), mark for refresh
-            if (datetime.now() - _cookies_last_loaded).total_seconds() >= 300:
-                if not _needs_refresh:
-                    logger.info("Cookie cache expired, marking for refresh")
-                    _needs_refresh = True
-        
-        # Only refresh if no active pages are using the context
-        if _needs_refresh and _active_pages == 0:
-            logger.info("Refreshing browser context with fresh cookies (no active pages)")
-            if _browser_context is not None:
-                try:
-                    _browser_context.close()
-                except:
-                    pass
-                _browser_context = None
-            _needs_refresh = False
-        
-        # Create browser if needed
-        if _browser_instance is None or _playwright_instance is None:
-            logger.info("Creating new persistent browser instance")
-            if _playwright_instance is None:
-                _playwright_instance = sync_playwright().start()
-            if _browser_instance is None:
-                _browser_instance = _playwright_instance.chromium.launch(
-                    headless=True,
-                    args=[
-                        '--disable-blink-features=AutomationControlled',
-                        '--disable-gpu',
-                        '--disable-software-rasterizer',
-                        '--disable-dev-shm-usage',
-                        '--no-sandbox'
-                    ]
-                )
-        
-        # Create new context with fresh cookies if needed
-        if _browser_context is None:
-            _browser_context = _browser_instance.new_context(
-                viewport={'width': 1920, 'height': 1080},
-                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    # Check if this thread has browser instances
+    if not hasattr(_thread_local, 'playwright'):
+        _thread_local.playwright = None
+        _thread_local.browser = None
+        _thread_local.context = None
+        _thread_local.context_created_at = None
+    
+    # Check if we need to refresh cookies (cache expired)
+    needs_refresh = False
+    if _thread_local.context is not None and _thread_local.context_created_at is not None:
+        # If context is older than 5 minutes, refresh it
+        if (datetime.now() - _thread_local.context_created_at).total_seconds() >= 300:
+            logger.info("Thread-local context expired, recreating with fresh cookies")
+            needs_refresh = True
+    
+    # Refresh context if needed
+    if needs_refresh and _thread_local.context is not None:
+        try:
+            _thread_local.context.close()
+        except:
+            pass
+        _thread_local.context = None
+    
+    # Create browser if needed
+    if _thread_local.browser is None or _thread_local.playwright is None:
+        logger.info(f"Creating thread-local browser instance for thread {threading.current_thread().name}")
+        if _thread_local.playwright is None:
+            _thread_local.playwright = sync_playwright().start()
+        if _thread_local.browser is None:
+            _thread_local.browser = _thread_local.playwright.chromium.launch(
+                headless=True,
+                args=[
+                    '--disable-blink-features=AutomationControlled',
+                    '--disable-gpu',
+                    '--disable-software-rasterizer',
+                    '--disable-dev-shm-usage',
+                    '--no-sandbox'
+                ]
             )
-            
-            cookies = load_cookies()
-            if cookies:
-                try:
-                    logger.info(f"Adding {len(cookies)} cookies to browser context")
-                    _browser_context.add_cookies(cookies)
-                    logger.info("Cookies successfully added")
-                except Exception as e:
-                    logger.error(f"Error adding cookies: {str(e)}")
+    
+    # Create new context with fresh cookies if needed
+    if _thread_local.context is None:
+        _thread_local.context = _thread_local.browser.new_context(
+            viewport={'width': 1920, 'height': 1080},
+            user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        )
+        _thread_local.context_created_at = datetime.now()
         
-        return _browser_instance, _browser_context
+        cookies = load_cookies()
+        if cookies:
+            try:
+                logger.info(f"Adding {len(cookies)} cookies to thread-local browser context")
+                _thread_local.context.add_cookies(cookies)
+                logger.info("Cookies successfully added")
+            except Exception as e:
+                logger.error(f"Error adding cookies: {str(e)}")
+    
+    return _thread_local.browser, _thread_local.context
 
 def close_browser():
-    """Close persistent browser instance"""
-    global _browser_instance, _browser_context, _playwright_instance
+    """Close thread-local browser instance"""
+    if hasattr(_thread_local, 'context') and _thread_local.context:
+        try:
+            _thread_local.context.close()
+        except:
+            pass
+        _thread_local.context = None
     
-    with _browser_lock:
-        if _browser_context:
-            try:
-                _browser_context.close()
-            except:
-                pass
-            _browser_context = None
-        
-        if _browser_instance:
-            try:
-                _browser_instance.close()
-            except:
-                pass
-            _browser_instance = None
-        
-        if _playwright_instance:
-            try:
-                _playwright_instance.stop()
-            except:
-                pass
-            _playwright_instance = None
+    if hasattr(_thread_local, 'browser') and _thread_local.browser:
+        try:
+            _thread_local.browser.close()
+        except:
+            pass
+        _thread_local.browser = None
     
-    logger.info("Browser instance closed")
+    if hasattr(_thread_local, 'playwright') and _thread_local.playwright:
+        try:
+            _thread_local.playwright.stop()
+        except:
+            pass
+        _thread_local.playwright = None
+    
+    logger.info("Thread-local browser instance closed")
 
 @contextmanager
 def get_browser_page():
-    """Context manager to get a browser page from the persistent browser"""
-    global _active_pages
-    
-    page = None
-    # Hold lock through page creation to prevent context refresh during new_page()
-    with _browser_lock:
-        browser, context = get_or_create_browser()
-        _active_pages += 1
-        try:
-            page = context.new_page()
-        except Exception as e:
-            # Roll back active pages count if page creation fails
-            _active_pages -= 1
-            logger.error(f"Failed to create page: {str(e)}")
-            raise
-    
+    """Context manager to get a browser page from thread-local browser"""
+    browser, context = get_or_create_browser()
+    page = context.new_page()
     page.set_default_timeout(60000)
     
     try:
         yield page
     finally:
         try:
-            if page:
-                page.close()
+            page.close()
         except:
             pass
-        
-        # Decrement active page count and check if refresh is needed
-        with _browser_lock:
-            _active_pages -= 1
-            # If this was the last page and refresh is needed, trigger it on next request
-            if _active_pages == 0 and _needs_refresh:
-                logger.info("Last page closed, refresh will occur on next request")
 
 # Register cleanup on exit
 atexit.register(close_browser)
