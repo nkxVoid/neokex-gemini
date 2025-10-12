@@ -976,12 +976,19 @@ def debug_cookies():
             'message': str(e)
         }), 500
 
-if __name__ == '__main__':
+# Initialize cleanup on module load (works with both Flask dev server and gunicorn)
+try:
     # Start aggressive cleanup for free tier (runs every 2 hours, deletes images older than 6 hours)
     start_cleanup_thread(interval_hours=2, max_age_hours=6)
     
     # Run initial cleanup on startup
     cleanup_old_images(max_age_hours=6)
+except Exception as e:
+    logger.error(f"Failed to initialize cleanup: {str(e)}")
+
+if __name__ == '__main__':
+    # Use PORT from environment (for Render) or default to 5000
+    port = int(os.environ.get('PORT', 5000))
     
     # Use production settings for free tier
-    app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)
+    app.run(host='0.0.0.0', port=port, debug=False, threaded=True)
