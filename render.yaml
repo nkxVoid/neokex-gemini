@@ -3,7 +3,6 @@ services:
     name: gemini-scraper-api
     runtime: docker
     plan: free
-    healthCheckPath: /health
     envVars:
       - key: PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS
         value: "true"
