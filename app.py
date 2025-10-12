@@ -13,12 +13,7 @@ os.environ['PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS'] = 'true'
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SESSION_SECRET', 'dev-secret-key')
 
-# Use /tmp for serverless environments like Vercel, otherwise use static/images
-if os.environ.get('VERCEL'):
-    STATIC_IMAGES_DIR = Path('/tmp/images')
-else:
-    STATIC_IMAGES_DIR = Path('static/images')
-
+STATIC_IMAGES_DIR = Path('static/images')
 STATIC_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 
 logging.basicConfig(level=logging.INFO)
