@@ -20,7 +20,7 @@ STATIC_IMAGES_DIR = Path('static/images')
 STATIC_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.ERROR,
     format='%(levelname)s: %(message)s'
 )
 logger = logging.getLogger(__name__)
@@ -119,9 +119,6 @@ def load_cookies():
                                     processed_cookie['sameSite'] = same_site.capitalize()
                             
                             cookies.append(processed_cookie)
-                            logger.info(f"Loaded JSON cookie: {cookie['name']}")
-                    
-                    logger.info(f"Total cookies loaded from JSON: {len(cookies)}")
                     # Cache cookies for future requests
                     _cached_cookies = cookies
                     _cookies_last_loaded = datetime.now()
@@ -162,7 +159,6 @@ def load_cookies():
                                 pass
                         
                         cookies.append(cookie)
-                        logger.info(f"Loaded Netscape cookie: {name}")
                     continue
                 
                 if '=' in line:
@@ -173,9 +169,6 @@ def load_cookies():
                         'domain': '.google.com',
                         'path': '/'
                     })
-                    logger.info(f"Loaded simple cookie: {name.strip()}")
-        
-            logger.info(f"Total cookies loaded: {len(cookies)}")
             # Cache cookies for future requests
             _cached_cookies = cookies
             _cookies_last_loaded = datetime.now()
@@ -218,7 +211,6 @@ def get_or_create_browser():
     
     # Create browser if needed
     if _thread_local.browser is None or _thread_local.playwright is None:
-        logger.info(f"Creating thread-local browser instance for thread {threading.current_thread().name}")
         if _thread_local.playwright is None:
             _thread_local.playwright = sync_playwright().start()
         if _thread_local.browser is None:
@@ -249,7 +241,14 @@ def get_or_create_browser():
                     '--disable-component-extensions-with-background-pages',
                     '--disable-features=TranslateUI,BlinkGenPropertyTrees',
                     '--disable-ipc-flooding-protection',
-                    '--disable-renderer-backgrounding'
+                    '--disable-renderer-backgrounding',
+                    '--disable-hang-monitor',
+                    '--disable-prompt-on-repost',
+                    '--metrics-recording-only',
+                    '--no-default-browser-check',
+                    '--disable-domain-reliability',
+                    '--disable-component-update',
+                    '--disk-cache-size=1'
                 ]
             )
     
@@ -267,9 +266,7 @@ def get_or_create_browser():
         cookies = load_cookies()
         if cookies:
             try:
-                logger.info(f"Adding {len(cookies)} cookies to thread-local browser context")
                 _thread_local.context.add_cookies(cookies)
-                logger.info("Cookies successfully added")
             except Exception as e:
                 logger.error(f"Error adding cookies: {str(e)}")
     
@@ -305,7 +302,7 @@ def get_browser_page():
     """Context manager to get a browser page from thread-local browser"""
     browser, context = get_or_create_browser()
     page = context.new_page()
-    page.set_default_timeout(45000)
+    page.set_default_timeout(30000)
     
     try:
         yield page
@@ -355,10 +352,7 @@ def wait_for_response_complete(page):
                 btn.textContent?.toLowerCase().includes('stop')
             );
             return !stopButton || stopButton.disabled || !stopButton.offsetParent;
-        }""", timeout=45000, polling=300)
-        
-        page.wait_for_timeout(100)
-        logger.info("Response completed")
+        }""", timeout=45000, polling=100)
         return True
     except PlaywrightTimeout:
         logger.warning("Timeout waiting for response completion")
@@ -367,7 +361,7 @@ def wait_for_response_complete(page):
 def download_image(url):
     """Download image from URL and save to temp file"""
     try:
-        response = requests.get(url, timeout=15)
+        response = requests.get(url, timeout=12)
         response.raise_for_status()
         
         ext = url.split('.')[-1].split('?')[0] or 'jpg'
@@ -377,8 +371,6 @@ def download_image(url):
         temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=f'.{ext}')
         temp_file.write(response.content)
         temp_file.close()
-        
-        logger.info(f"Downloaded image to {temp_file.name}")
         return temp_file.name
     except Exception as e:
         logger.error(f"Failed to download image: {str(e)}")
@@ -387,9 +379,6 @@ def download_image(url):
 def download_authenticated_image(page, url):
     """Download image using authenticated browser context and save to static folder"""
     try:
-        logger.info(f"Downloading authenticated image from: {url}")
-        
-        # Navigate to the image URL with the authenticated context
         response = page.request.get(url)
         
         if response.status != 200:
@@ -397,9 +386,6 @@ def download_authenticated_image(page, url):
             return None
         
         image_data = response.body()
-        
-        logger.info(f"Image data size: {len(image_data)} bytes")
-        logger.info(f"Response headers: {dict(response.headers)}")
         
         # Detect image format from content or headers
         ext = 'jpg'  # default
@@ -432,8 +418,6 @@ def download_authenticated_image(page, url):
         # Save image to static folder
         with open(filepath, 'wb') as f:
             f.write(image_data)
-        
-        logger.info(f"Saved authenticated image to {filepath} (format: {ext})")
         return filename
     except Exception as e:
         logger.error(f"Failed to download authenticated image: {str(e)}")
@@ -457,9 +441,7 @@ def gemini_chat():
     
     try:
         with get_browser_page() as page:
-            logger.info(f"Navigating to Gemini with message: {chat_message}")
-            page.goto('https://gemini.google.com/app', timeout=45000, wait_until='domcontentloaded')
-            page.wait_for_timeout(200)
+            page.goto('https://gemini.google.com/app', timeout=30000, wait_until='domcontentloaded')
             
             if check_login_required(page):
                 return jsonify({
@@ -481,10 +463,9 @@ def gemini_chat():
                 input_element = None
                 for selector in input_selectors:
                     try:
-                        element = page.wait_for_selector(selector, timeout=6000, state='visible')
+                        element = page.wait_for_selector(selector, timeout=4000, state='visible')
                         if element:
                             input_element = element
-                            logger.info(f"Found input using selector: {selector}")
                             break
                     except PlaywrightTimeout:
                         continue
@@ -495,9 +476,7 @@ def gemini_chat():
                     raise Exception("Could not find input field. Page may have changed.")
                 
                 input_element.click()
-                page.wait_for_timeout(50)
                 input_element.type(chat_message, delay=0)
-                page.wait_for_timeout(50)
                 
                 # Try multiple send strategies
                 send_success = False
@@ -507,7 +486,6 @@ def gemini_chat():
                     if send_button.count() > 0:
                         send_button.click()
                         send_success = True
-                        logger.info("Clicked send button via aria-label")
                 except:
                     pass
                 
@@ -516,17 +494,12 @@ def gemini_chat():
                         # Strategy 2: Press Enter
                         page.keyboard.press('Enter')
                         send_success = True
-                        logger.info("Sent message via Enter key")
                     except:
                         pass
                 
                 if not send_success:
                     raise Exception("Could not send message")
                 
-                # Wait for response to start appearing
-                page.wait_for_timeout(200)
-                
-                # Wait for response to complete
                 wait_for_response_complete(page)
                 
                 # Extract response with multiple selector strategies
@@ -547,7 +520,6 @@ def gemini_chat():
                             text = elements[-1].inner_text()
                             if text and len(text.strip()) > 0:
                                 response_text = text
-                                logger.info(f"Extracted response using selector: {selector}")
                                 break
                     except:
                         continue
@@ -555,15 +527,12 @@ def gemini_chat():
                 # Fallback: try to get any new text that appeared
                 if not response_text:
                     try:
-                        # Wait a bit more
-                        page.wait_for_timeout(500)
                         # Try to get the last message-like element
                         all_text_elements = page.locator('div[class*="content"], div[class*="message"], div[jsname]').all()
                         for elem in reversed(all_text_elements):
                             text = elem.inner_text()
                             if text and len(text.strip()) > 20 and text.strip() != chat_message:
                                 response_text = text
-                                logger.info("Extracted response using fallback method")
                                 break
                     except:
                         pass
@@ -612,9 +581,7 @@ def generate_image():
     
     try:
         with get_browser_page() as page:
-            logger.info(f"Generating image with prompt: {prompt}")
-            page.goto('https://gemini.google.com/app', timeout=45000, wait_until='domcontentloaded')
-            page.wait_for_timeout(200)
+            page.goto('https://gemini.google.com/app', timeout=30000, wait_until='domcontentloaded')
             
             if check_login_required(page):
                 return jsonify({
@@ -634,10 +601,9 @@ def generate_image():
                 input_element = None
                 for selector in input_selectors:
                     try:
-                        element = page.wait_for_selector(selector, timeout=5000)
+                        element = page.wait_for_selector(selector, timeout=4000)
                         if element:
                             input_element = element
-                            logger.info(f"Found input using selector: {selector}")
                             break
                     except PlaywrightTimeout:
                         continue
@@ -646,9 +612,7 @@ def generate_image():
                     raise Exception("Could not find input field")
                 
                 input_element.click()
-                page.wait_for_timeout(100)
-                input_element.fill(f"Generate an image: {prompt}")
-                page.wait_for_timeout(100)
+                input_element.type(f"Generate an image: {prompt}", delay=0)
                 
                 send_button = page.locator('button[aria-label*="Send"], button:has-text("Send")').first
                 if send_button.count() > 0:
@@ -656,11 +620,7 @@ def generate_image():
                 else:
                     page.keyboard.press('Enter')
                 
-                page.wait_for_timeout(200)
-                
                 wait_for_response_complete(page)
-                
-                page.wait_for_timeout(100)
                 
                 image_selectors = [
                     'img[src*="googleusercontent.com"]',
@@ -672,12 +632,10 @@ def generate_image():
                 for selector in image_selectors:
                     images = page.locator(selector).all()
                     if images:
-                        logger.info(f"Found {len(images)} images with selector: {selector}")
                         # Get ALL images, not just the last one
                         for img in images:
                             src = img.get_attribute('src')
                             if src and ('http' in src):
-                                logger.info(f"Found image src: {src}")
                                 google_image_urls.append(src)
                         if google_image_urls:
                             break
@@ -690,7 +648,6 @@ def generate_image():
                     if filename:
                         local_url = f"{base_url}/images/{filename}"
                         local_image_urls.append(local_url)
-                        logger.info(f"Downloaded and saved image: {local_url}")
                 
                 if local_image_urls:
                     return jsonify({
@@ -739,9 +696,7 @@ def edit_image():
     
     try:
         with get_browser_page() as page:
-            logger.info(f"Editing image with prompt: {prompt}")
-            page.goto('https://gemini.google.com/app', timeout=45000, wait_until='domcontentloaded')
-            page.wait_for_timeout(200)
+            page.goto('https://gemini.google.com/app', timeout=30000, wait_until='domcontentloaded')
             
             if check_login_required(page):
                 os.unlink(image_file)
@@ -763,28 +718,29 @@ def edit_image():
                 for selector in upload_selectors:
                     try:
                         if 'input[type="file"]' in selector:
-                            file_input = page.locator(selector).first
-                            if file_input.count() > 0:
-                                logger.info(f"Found file input: {selector}")
+                            locator = page.locator(selector).first
+                            if locator.count() > 0:
+                                file_input = locator
                                 break
                         else:
                             button = page.locator(selector).first
                             if button.count() > 0:
                                 button.click()
-                                page.wait_for_timeout(100)
-                                file_input = page.locator('input[type="file"]').first
-                                if file_input.count() > 0:
-                                    logger.info(f"Found file input after clicking: {selector}")
-                                    break
+                                try:
+                                    page.wait_for_selector('input[type="file"]', timeout=2000, state='attached')
+                                    file_input = page.locator('input[type="file"]').first
+                                    if file_input.count() > 0:
+                                        break
+                                except:
+                                    pass
                     except:
                         continue
                 
                 if not file_input or file_input.count() == 0:
                     file_input = page.locator('input[type="file"]').first
                 
-                if file_input.count() > 0:
+                if file_input and file_input.count() > 0:
                     file_input.set_input_files(image_file)
-                    page.wait_for_timeout(200)
                 else:
                     raise Exception("Could not find file upload button")
                 
@@ -798,10 +754,9 @@ def edit_image():
                 input_element = None
                 for selector in input_selectors:
                     try:
-                        element = page.wait_for_selector(selector, timeout=5000)
+                        element = page.wait_for_selector(selector, timeout=4000)
                         if element:
                             input_element = element
-                            logger.info(f"Found input using selector: {selector}")
                             break
                     except PlaywrightTimeout:
                         continue
@@ -810,9 +765,7 @@ def edit_image():
                     raise Exception("Could not find input field")
                 
                 input_element.click()
-                page.wait_for_timeout(100)
-                input_element.fill(prompt)
-                page.wait_for_timeout(100)
+                input_element.type(prompt, delay=0)
                 
                 send_button = page.locator('button[aria-label*="Send"], button:has-text("Send")').first
                 if send_button.count() > 0:
@@ -820,11 +773,7 @@ def edit_image():
                 else:
                     page.keyboard.press('Enter')
                 
-                page.wait_for_timeout(200)
-                
                 wait_for_response_complete(page)
-                
-                page.wait_for_timeout(100)
                 
                 image_selectors = [
                     'img[src*="googleusercontent.com"]',
