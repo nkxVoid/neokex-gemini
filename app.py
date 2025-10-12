@@ -33,6 +33,13 @@ _cookie_lock = threading.RLock()
 # Thread-local storage for browser instances (Playwright is thread-bound)
 _thread_local = threading.local()
 
+def get_base_url():
+    """Get the proper base URL for constructing image URLs"""
+    replit_domain = os.environ.get('REPLIT_DOMAINS')
+    if replit_domain:
+        return f"https://{replit_domain}"
+    return request.host_url.rstrip('/')
+
 def load_cookies():
     """Load cookies from account.txt file or ACCOUNT_COOKIES env var - supports JSON, Netscape, and name=value formats"""
     global _cached_cookies, _cookies_last_loaded
@@ -637,8 +644,8 @@ def generate_image():
                     for google_url in google_image_urls:
                         filename = download_authenticated_image(page, google_url)
                         if filename:
-                            # Get the base URL from request
-                            base_url = request.host_url.rstrip('/')
+                            # Get the base URL (uses REPLIT_DOMAINS for public access)
+                            base_url = get_base_url()
                             local_url = f"{base_url}/images/{filename}"
                             local_image_urls.append(local_url)
                 
@@ -798,8 +805,8 @@ def edit_image():
                     for google_url in google_result_urls:
                         filename = download_authenticated_image(page, google_url)
                         if filename:
-                            # Get the base URL from request
-                            base_url = request.host_url.rstrip('/')
+                            # Get the base URL (uses REPLIT_DOMAINS for public access)
+                            base_url = get_base_url()
                             local_url = f"{base_url}/images/{filename}"
                             local_result_urls.append(local_url)
                 
