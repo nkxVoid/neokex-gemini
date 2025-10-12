@@ -212,11 +212,11 @@ def gemini_chat():
         with sync_playwright() as p:
             browser, context = setup_browser_context(p)
             page = context.new_page()
+            page.set_default_timeout(90000)
             
             logger.info(f"Navigating to Gemini with message: {chat_message}")
-            page.goto('https://gemini.google.com/app', timeout=60000)
-            page.wait_for_load_state('networkidle')
-            page.wait_for_timeout(3000)
+            page.goto('https://gemini.google.com/app', timeout=90000, wait_until='domcontentloaded')
+            page.wait_for_timeout(5000)
             
             if check_login_required(page):
                 browser.close()
@@ -231,13 +231,15 @@ def gemini_chat():
                     'rich-textarea[placeholder]',
                     'div[contenteditable="true"][role="textbox"]',
                     'textarea[placeholder*="prompt"]',
-                    'div.ql-editor[contenteditable="true"]'
+                    'div.ql-editor[contenteditable="true"]',
+                    'textarea',
+                    'div[contenteditable="true"]'
                 ]
                 
                 input_element = None
                 for selector in input_selectors:
                     try:
-                        element = page.wait_for_selector(selector, timeout=5000)
+                        element = page.wait_for_selector(selector, timeout=10000, state='visible')
                         if element:
                             input_element = element
                             logger.info(f"Found input using selector: {selector}")
@@ -246,7 +248,9 @@ def gemini_chat():
                         continue
                 
                 if not input_element:
-                    raise Exception("Could not find input field")
+                    page.screenshot(path='/tmp/gemini_chat_error.png')
+                    logger.error("Could not find input field. Screenshot saved.")
+                    raise Exception("Could not find input field. Page may have changed.")
                 
                 input_element.click()
                 page.wait_for_timeout(500)
@@ -322,11 +326,11 @@ def generate_image():
         with sync_playwright() as p:
             browser, context = setup_browser_context(p)
             page = context.new_page()
+            page.set_default_timeout(90000)
             
             logger.info(f"Generating image with prompt: {prompt}")
-            page.goto('https://gemini.google.com/app', timeout=60000)
-            page.wait_for_load_state('networkidle')
-            page.wait_for_timeout(3000)
+            page.goto('https://gemini.google.com/app', timeout=90000, wait_until='domcontentloaded')
+            page.wait_for_timeout(5000)
             
             if check_login_required(page):
                 browser.close()
@@ -443,11 +447,11 @@ def edit_image():
         with sync_playwright() as p:
             browser, context = setup_browser_context(p)
             page = context.new_page()
+            page.set_default_timeout(90000)
             
             logger.info(f"Editing image with prompt: {prompt}")
-            page.goto('https://gemini.google.com/app', timeout=60000)
-            page.wait_for_load_state('networkidle')
-            page.wait_for_timeout(3000)
+            page.goto('https://gemini.google.com/app', timeout=90000, wait_until='domcontentloaded')
+            page.wait_for_timeout(5000)
             
             if check_login_required(page):
                 browser.close()
