@@ -20,7 +20,7 @@ STATIC_IMAGES_DIR = Path('static/images')
 STATIC_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 
 logging.basicConfig(
-    level=logging.ERROR,
+    level=logging.INFO,
     format='%(levelname)s: %(message)s'
 )
 logger = logging.getLogger(__name__)
@@ -398,6 +398,9 @@ def download_authenticated_image(page, url):
         
         image_data = response.body()
         
+        logger.info(f"Image data size: {len(image_data)} bytes")
+        logger.info(f"Response headers: {dict(response.headers)}")
+        
         # Detect image format from content or headers
         ext = 'jpg'  # default
         
@@ -669,11 +672,14 @@ def generate_image():
                 for selector in image_selectors:
                     images = page.locator(selector).all()
                     if images:
+                        logger.info(f"Found {len(images)} images with selector: {selector}")
                         # Get the last image (most recent generated one)
                         last_img = images[-1]
                         src = last_img.get_attribute('src')
+                        logger.info(f"Last image src: {src}")
                         if src and ('http' in src):
                             google_image_url = src
+                            logger.info(f"Selected image URL: {google_image_url}")
                             break
                 
                 # Download image with authentication and save locally
