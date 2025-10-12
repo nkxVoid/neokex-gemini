@@ -22,10 +22,21 @@ STATIC_IMAGES_DIR = Path('static/images')
 STATIC_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 
 logging.basicConfig(
-    level=logging.WARNING,
+    level=logging.ERROR,
     format='%(levelname)s: %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# Memory monitoring for debugging
+def log_memory_usage():
+    try:
+        import psutil
+        import os
+        process = psutil.Process(os.getpid())
+        mem_mb = process.memory_info().rss / 1024 / 1024
+        logger.error(f"Memory usage: {mem_mb:.1f}MB")
+    except:
+        pass
 
 # Global cookie cache for performance
 _cached_cookies = None
@@ -198,15 +209,15 @@ def cleanup_background_task(interval_hours=6, max_age_hours=24):
         except Exception as e:
             logger.error(f"Background cleanup task error: {str(e)}")
 
-def start_cleanup_thread(interval_hours=2, max_age_hours=6):
-    """Start background cleanup thread - more aggressive for free tier"""
+def start_cleanup_thread(interval_hours=1, max_age_hours=3):
+    """Start background cleanup thread - very aggressive for 512MB RAM limit"""
     cleanup_thread = threading.Thread(
         target=cleanup_background_task,
         args=(interval_hours, max_age_hours),
         daemon=True
     )
     cleanup_thread.start()
-    logger.warning(f"Started cleanup thread (every {interval_hours}h, max_age: {max_age_hours}h)")
+    logger.error(f"Started cleanup thread (every {interval_hours}h, max_age: {max_age_hours}h)")
 
 def get_or_create_browser():
     """Get or create thread-local browser instance"""
@@ -222,9 +233,9 @@ def get_or_create_browser():
     # Check if we need to refresh cookies (cache expired)
     needs_refresh = False
     if _thread_local.context is not None and _thread_local.context_created_at is not None:
-        # If context is older than 5 minutes, refresh it
-        if (datetime.now() - _thread_local.context_created_at).total_seconds() >= 300:
-            logger.info("Thread-local context expired, recreating with fresh cookies")
+        # If context is older than 2 minutes, refresh it (aggressive for memory)
+        if (datetime.now() - _thread_local.context_created_at).total_seconds() >= 120:
+            logger.warning("Thread-local context expired, recreating with fresh cookies")
             needs_refresh = True
     
     # Refresh context if needed
@@ -255,17 +266,31 @@ def get_or_create_browser():
                     '--disable-translate',
                     '--disable-default-apps',
                     '--no-first-run',
-                    '--disable-setuid-sandbox'
+                    '--disable-setuid-sandbox',
+                    '--disable-web-security',
+                    '--disable-features=IsolateOrigins,site-per-process',
+                    '--disable-site-isolation-trials',
+                    '--js-flags=--max-old-space-size=128',
+                    '--disable-accelerated-2d-canvas',
+                    '--no-zygote',
+                    '--disable-background-timer-throttling',
+                    '--disable-backgrounding-occluded-windows',
+                    '--disable-breakpad',
+                    '--disable-component-extensions-with-background-pages',
+                    '--disable-features=TranslateUI,BlinkGenPropertyTrees',
+                    '--disable-ipc-flooding-protection',
+                    '--disable-renderer-backgrounding'
                 ]
             )
     
     # Create new context with fresh cookies if needed
     if _thread_local.context is None:
         _thread_local.context = _thread_local.browser.new_context(
-            viewport={'width': 1280, 'height': 720},
+            viewport={'width': 1024, 'height': 600},
             user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             java_script_enabled=True,
-            bypass_csp=True
+            bypass_csp=True,
+            ignore_https_errors=True
         )
         _thread_local.context_created_at = datetime.now()
         
@@ -319,10 +344,10 @@ def get_browser_page():
             page.close()
         except:
             pass
-        # Aggressive cleanup for free tier
+        # Aggressive cleanup for 512MB RAM limit
         try:
             import gc
-            gc.collect()
+            gc.collect(2)  # Full garbage collection
         except:
             pass
 
@@ -978,11 +1003,11 @@ def debug_cookies():
 
 # Initialize cleanup on module load (works with both Flask dev server and gunicorn)
 try:
-    # Start aggressive cleanup for free tier (runs every 2 hours, deletes images older than 6 hours)
-    start_cleanup_thread(interval_hours=2, max_age_hours=6)
+    # Start very aggressive cleanup for 512MB RAM limit (runs every 1 hour, deletes images older than 3 hours)
+    start_cleanup_thread(interval_hours=1, max_age_hours=3)
     
     # Run initial cleanup on startup
-    cleanup_old_images(max_age_hours=6)
+    cleanup_old_images(max_age_hours=3)
 except Exception as e:
     logger.error(f"Failed to initialize cleanup: {str(e)}")
 

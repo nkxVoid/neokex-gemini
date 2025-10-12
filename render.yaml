@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: gemini-scraper-api
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS
+        value: "true"
+      - key: ACCOUNT_COOKIES
+        sync: false
+      - key: PYTHONUNBUFFERED
+        value: "1"

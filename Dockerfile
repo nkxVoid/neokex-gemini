@@ -49,5 +49,5 @@ EXPOSE 5000
 # Set environment variable to skip host requirements validation
 ENV PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true
 
-# Run the application with gunicorn for production
-CMD gunicorn --bind 0.0.0.0:${PORT:-5000} --workers 2 --threads 2 --timeout 120 --keep-alive 5 --max-requests 1000 --max-requests-jitter 100 --log-level warning --preload app:app
+# Run the application with gunicorn for production (single worker for 512MB RAM limit)
+CMD gunicorn --bind 0.0.0.0:${PORT:-5000} --workers 1 --threads 1 --worker-class sync --timeout 120 --keep-alive 5 --max-requests 500 --max-requests-jitter 50 --log-level error app:app

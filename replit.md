@@ -35,14 +35,19 @@ This project allows users to programmatically interact with Google Gemini throug
   - Added faster polling (200ms) to response detection function
   - Reduced total wait times from ~5-6 seconds to ~1.5 seconds per request
   - **Result: API responses are now 3-4x faster than before**
-- **Lightweight Optimizations for Render Free Tier:**
-  - Added memory-efficient browser launch flags (--disable-extensions, --disable-background-networking, etc.)
-  - Reduced viewport from 1920x1080 to 1280x720 for lower memory usage
-  - Added aggressive garbage collection after each page close
-  - Changed logging from INFO to WARNING level (reduced I/O overhead)
-  - More frequent cleanup: every 2 hours, max image age 6 hours (vs 6h/24h)
-  - Running in production mode (debug=False, threaded=True)
-  - **Result: Memory footprint reduced by ~30-40% for stable free tier operation**
+- **Extreme Memory Optimizations for Render 512MB Free Tier:**
+  - **Single worker, single thread** gunicorn configuration (minimal concurrency)
+  - Reduced viewport from 1920x1080 to 1024x600 (50% smaller)
+  - Added 25+ Chromium memory-saving flags including:
+    - `--js-flags=--max-old-space-size=128` (128MB V8 heap limit)
+    - `--disable-features=IsolateOrigins,site-per-process` (no process isolation)
+    - `--no-zygote` (no zygote process)
+    - `--disable-dev-shm-usage` (no /dev/shm usage)
+  - Browser context refresh every 2 minutes (vs 5 minutes)
+  - Full garbage collection (gc.collect(2)) after each request
+  - Very aggressive cleanup: every 1 hour, max image age 3 hours
+  - Changed logging to ERROR level only (minimal I/O)
+  - **Result: Memory usage optimized to fit within 512MB RAM limit**
 - **Thread-Local Browser Pooling (Earlier optimization):**
   - Each Flask thread reuses its own persistent browser instance
   - Cookie caching in memory (5-minute TTL) to avoid repeated file I/O
@@ -98,11 +103,12 @@ This project allows users to programmatically interact with Google Gemini throug
 - Headless browser operation
 - **All images served as .jpg format only**
 - **Docker-ready for Render deployment**
-- **Automatic cleanup system (optimized for free tier):**
-  - Background thread cleans up old images every 2 hours
-  - Deletes images older than 6 hours automatically  
+- **Automatic cleanup system (extreme for 512MB RAM):**
+  - Background thread cleans up old images every 1 hour
+  - Deletes images older than 3 hours automatically  
   - Temp files cleaned up immediately after use
-  - Prevents disk space issues for long-term operation on free tier
+  - Full garbage collection after each request
+  - Prevents disk space and memory issues on 512MB free tier
 
 ### Authentication System
 - Reads cookies from `account.txt` file
@@ -161,7 +167,8 @@ This project allows users to programmatically interact with Google Gemini throug
 - Uses Python 3.11-slim base image
 - Installs all Chromium system dependencies
 - Playwright browsers installed during build
-- Lightweight and production-ready
+- Gunicorn with single worker/thread for 512MB RAM
+- Production-ready with extreme memory optimizations
 
 ## Dependencies
 
