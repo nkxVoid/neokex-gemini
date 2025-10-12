@@ -1,11 +1,9 @@
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 import os
 import requests
 import tempfile
-from pathlib import Path
 import logging
-import uuid
 import json
 import threading
 from datetime import datetime
@@ -15,9 +13,6 @@ os.environ['PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS'] = 'true'
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SESSION_SECRET', 'dev-secret-key')
-
-STATIC_IMAGES_DIR = Path('static/images')
-STATIC_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 
 logging.basicConfig(
     level=logging.ERROR,
@@ -376,58 +371,6 @@ def download_image(url):
         logger.error(f"Failed to download image: {str(e)}")
         return None
 
-def download_authenticated_image(page, url):
-    """Download image using authenticated browser context and save to static folder"""
-    try:
-        response = page.request.get(url)
-        
-        if response.status != 200:
-            logger.error(f"Failed to download image: HTTP {response.status}")
-            return None
-        
-        image_data = response.body()
-        
-        # Detect image format from content or headers
-        ext = 'jpg'  # default
-        
-        # Check content-type header first
-        content_type = response.headers.get('content-type', '').lower()
-        if 'png' in content_type:
-            ext = 'png'
-        elif 'jpeg' in content_type or 'jpg' in content_type:
-            ext = 'jpg'
-        elif 'webp' in content_type:
-            ext = 'webp'
-        elif 'gif' in content_type:
-            ext = 'gif'
-        else:
-            # Fallback: detect from binary signature
-            if image_data[:8] == b'\x89PNG\r\n\x1a\n':
-                ext = 'png'
-            elif image_data[:3] == b'\xff\xd8\xff':
-                ext = 'jpg'
-            elif image_data[:4] == b'RIFF' and image_data[8:12] == b'WEBP':
-                ext = 'webp'
-            elif image_data[:6] in (b'GIF87a', b'GIF89a'):
-                ext = 'gif'
-        
-        # Generate unique filename
-        filename = f"{uuid.uuid4()}.{ext}"
-        filepath = STATIC_IMAGES_DIR / filename
-        
-        # Save image to static folder
-        with open(filepath, 'wb') as f:
-            f.write(image_data)
-        return filename
-    except Exception as e:
-        logger.error(f"Failed to download authenticated image: {str(e)}")
-        return None
-
-@app.route('/images/<filename>')
-def serve_image(filename):
-    """Serve downloaded images from static folder"""
-    return send_from_directory(STATIC_IMAGES_DIR, filename)
-
 @app.route('/gemini', methods=['GET'])
 def gemini_chat():
     """Chat with Gemini endpoint"""
@@ -670,20 +613,11 @@ def generate_image():
                         if google_image_urls:
                             break
                 
-                # Download all images with authentication and save locally
-                local_image_urls = []
-                base_url = get_base_url()
-                for google_image_url in google_image_urls:
-                    filename = download_authenticated_image(page, google_image_url)
-                    if filename:
-                        local_url = f"{base_url}/images/{filename}"
-                        local_image_urls.append(local_url)
-                
-                if local_image_urls:
+                if google_image_urls:
                     return jsonify({
                         'status': 'success',
                         'prompt': prompt,
-                        'images': local_image_urls
+                        'images': google_image_urls
                     })
                 else:
                     return jsonify({
@@ -849,15 +783,6 @@ def edit_image():
                         if google_result_urls:
                             break
                 
-                # Download all images with authentication and save locally
-                local_result_urls = []
-                base_url = get_base_url()
-                for google_result_url in google_result_urls:
-                    filename = download_authenticated_image(page, google_result_url)
-                    if filename:
-                        local_url = f"{base_url}/images/{filename}"
-                        local_result_urls.append(local_url)
-                
                 response_selectors = [
                     'div[data-message-author-role="model"]',
                     'div.model-response-text'
@@ -873,14 +798,14 @@ def edit_image():
                 
                 os.unlink(image_file)
                 
-                if local_result_urls or response_text:
+                if google_result_urls or response_text:
                     result = {
                         'status': 'success',
                         'original_image': img_url,
                         'prompt': prompt
                     }
-                    if local_result_urls:
-                        result['edited_images'] = local_result_urls  # type: ignore
+                    if google_result_urls:
+                        result['edited_images'] = google_result_urls  # type: ignore
                     if response_text:
                         result['response'] = response_text.strip()
                     return jsonify(result)

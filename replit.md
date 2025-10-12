@@ -16,19 +16,20 @@ This project allows users to programmatically interact with Google Gemini throug
 
 ## Recent Changes
 *October 12, 2025*
-- **Multi-Image Collection & Profile Picture Filter (Latest):**
-  - **FIXED**: API now correctly collects all Gemini-generated images while filtering out UI elements
-  - Added profile picture detection and filtering (excludes images with `/a/ACg8oc`, size params like `s64-c`, `s32-c`, etc.)
-  - Added URL deduplication to prevent collecting the same image multiple times
-  - Increased scroll wait times: 2 seconds for lazy-loading, 1 second after scroll-back
-  - Added broader image selectors with smart filtering instead of restrictive CSS selectors
+- **Direct Google URLs - No Local Storage (Latest):**
+  - **MAJOR FIX**: API now returns Google image URLs directly (no local download/storage)
+  - Solves Render's ephemeral storage problem - URLs are always valid and permanent
+  - Faster responses - no download/save overhead
+  - Works identically on both Replit and Render
+  - Profile picture filtering ensures only actual generated images are returned
   - Applied to both /gimage and /gedit endpoints
-  - **Result: API collects only actual generated images, filtering out profile pics and UI icons**
-- **Render Storage Compatibility Note:**
-  - Render's free tier uses ephemeral storage - saved images persist only during container lifetime
-  - Images are deleted on container restart/redeploy, making URLs invalid after restart
-  - For production use, consider: (1) base64 data URLs or (2) external storage (S3/Cloudinary)
-  - Current implementation works reliably within a single container session
+  - **Result: Permanent, reliable image URLs that work on all platforms**
+- **Multi-Image Collection & Profile Picture Filter:**
+  - API correctly collects all Gemini-generated images while filtering out UI elements
+  - Profile picture detection and filtering (excludes `/a/ACg8oc`, size params like `s64-c`, `s32-c`, etc.)
+  - URL deduplication to prevent collecting the same image multiple times
+  - Increased scroll wait times: 2 seconds for lazy-loading, 1 second after scroll-back
+  - Broader image selectors with smart filtering instead of restrictive CSS selectors
 - **Render Cloud Compatibility Fix:**
   - **FIXED**: "Could not find input field" error on Render deployment
   - Added networkidle wait state after page load for cloud environments
