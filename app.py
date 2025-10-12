@@ -21,7 +21,10 @@ app.config['SECRET_KEY'] = os.environ.get('SESSION_SECRET', 'dev-secret-key')
 STATIC_IMAGES_DIR = Path('static/images')
 STATIC_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.WARNING,
+    format='%(levelname)s: %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 # Global cookie cache for performance
@@ -195,15 +198,15 @@ def cleanup_background_task(interval_hours=6, max_age_hours=24):
         except Exception as e:
             logger.error(f"Background cleanup task error: {str(e)}")
 
-def start_cleanup_thread(interval_hours=6, max_age_hours=24):
-    """Start background cleanup thread"""
+def start_cleanup_thread(interval_hours=2, max_age_hours=6):
+    """Start background cleanup thread - more aggressive for free tier"""
     cleanup_thread = threading.Thread(
         target=cleanup_background_task,
         args=(interval_hours, max_age_hours),
         daemon=True
     )
     cleanup_thread.start()
-    logger.info(f"Started background cleanup thread (interval: {interval_hours}h, max_age: {max_age_hours}h)")
+    logger.warning(f"Started cleanup thread (every {interval_hours}h, max_age: {max_age_hours}h)")
 
 def get_or_create_browser():
     """Get or create thread-local browser instance"""
@@ -245,15 +248,24 @@ def get_or_create_browser():
                     '--disable-gpu',
                     '--disable-software-rasterizer',
                     '--disable-dev-shm-usage',
-                    '--no-sandbox'
+                    '--no-sandbox',
+                    '--disable-extensions',
+                    '--disable-background-networking',
+                    '--disable-sync',
+                    '--disable-translate',
+                    '--disable-default-apps',
+                    '--no-first-run',
+                    '--disable-setuid-sandbox'
                 ]
             )
     
     # Create new context with fresh cookies if needed
     if _thread_local.context is None:
         _thread_local.context = _thread_local.browser.new_context(
-            viewport={'width': 1920, 'height': 1080},
-            user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            viewport={'width': 1280, 'height': 720},
+            user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            java_script_enabled=True,
+            bypass_csp=True
         )
         _thread_local.context_created_at = datetime.now()
         
@@ -305,6 +317,12 @@ def get_browser_page():
     finally:
         try:
             page.close()
+        except:
+            pass
+        # Aggressive cleanup for free tier
+        try:
+            import gc
+            gc.collect()
         except:
             pass
 
@@ -375,9 +393,9 @@ def wait_for_response_complete(page):
                 btn.textContent?.toLowerCase().includes('stop')
             );
             return !stopButton || stopButton.disabled || !stopButton.offsetParent;
-        }""", timeout=45000)
+        }""", timeout=45000, polling=200)
         
-        page.wait_for_timeout(800)
+        page.wait_for_timeout(300)
         logger.info("Response completed")
         return True
     except PlaywrightTimeout:
@@ -455,7 +473,7 @@ def gemini_chat():
         with get_browser_page() as page:
             logger.info(f"Navigating to Gemini with message: {chat_message}")
             page.goto('https://gemini.google.com/app', timeout=60000, wait_until='domcontentloaded')
-            page.wait_for_timeout(1500)
+            page.wait_for_timeout(500)
             
             if check_login_required(page):
                 return jsonify({
@@ -491,9 +509,9 @@ def gemini_chat():
                     raise Exception("Could not find input field. Page may have changed.")
                 
                 input_element.click()
-                page.wait_for_timeout(300)
-                input_element.type(chat_message)
-                page.wait_for_timeout(300)
+                page.wait_for_timeout(100)
+                input_element.type(chat_message, delay=0)
+                page.wait_for_timeout(100)
                 
                 # Try multiple send strategies
                 send_success = False
@@ -520,7 +538,7 @@ def gemini_chat():
                     raise Exception("Could not send message")
                 
                 # Wait for response to start appearing
-                page.wait_for_timeout(1000)
+                page.wait_for_timeout(500)
                 
                 # Wait for response to complete
                 wait_for_response_complete(page)
@@ -552,7 +570,7 @@ def gemini_chat():
                 if not response_text:
                     try:
                         # Wait a bit more
-                        page.wait_for_timeout(1000)
+                        page.wait_for_timeout(500)
                         # Try to get the last message-like element
                         all_text_elements = page.locator('div[class*="content"], div[class*="message"], div[jsname]').all()
                         for elem in reversed(all_text_elements):
@@ -610,7 +628,7 @@ def generate_image():
         with get_browser_page() as page:
             logger.info(f"Generating image with prompt: {prompt}")
             page.goto('https://gemini.google.com/app', timeout=60000, wait_until='domcontentloaded')
-            page.wait_for_timeout(1500)
+            page.wait_for_timeout(500)
             
             if check_login_required(page):
                 return jsonify({
@@ -642,9 +660,9 @@ def generate_image():
                     raise Exception("Could not find input field")
                 
                 input_element.click()
-                page.wait_for_timeout(200)
+                page.wait_for_timeout(100)
                 input_element.fill(f"Generate an image: {prompt}")
-                page.wait_for_timeout(200)
+                page.wait_for_timeout(100)
                 
                 send_button = page.locator('button[aria-label*="Send"], button:has-text("Send")').first
                 if send_button.count() > 0:
@@ -652,11 +670,11 @@ def generate_image():
                 else:
                     page.keyboard.press('Enter')
                 
-                page.wait_for_timeout(1000)
+                page.wait_for_timeout(500)
                 
                 wait_for_response_complete(page)
                 
-                page.wait_for_timeout(500)
+                page.wait_for_timeout(300)
                 
                 image_selectors = [
                     'img[src*="googleusercontent.com"]',
@@ -734,7 +752,7 @@ def edit_image():
         with get_browser_page() as page:
             logger.info(f"Editing image with prompt: {prompt}")
             page.goto('https://gemini.google.com/app', timeout=60000, wait_until='domcontentloaded')
-            page.wait_for_timeout(1500)
+            page.wait_for_timeout(500)
             
             if check_login_required(page):
                 os.unlink(image_file)
@@ -764,7 +782,7 @@ def edit_image():
                             button = page.locator(selector).first
                             if button.count() > 0:
                                 button.click()
-                                page.wait_for_timeout(300)
+                                page.wait_for_timeout(200)
                                 file_input = page.locator('input[type="file"]').first
                                 if file_input.count() > 0:
                                     logger.info(f"Found file input after clicking: {selector}")
@@ -777,7 +795,7 @@ def edit_image():
                 
                 if file_input.count() > 0:
                     file_input.set_input_files(image_file)
-                    page.wait_for_timeout(800)
+                    page.wait_for_timeout(500)
                 else:
                     raise Exception("Could not find file upload button")
                 
@@ -803,9 +821,9 @@ def edit_image():
                     raise Exception("Could not find input field")
                 
                 input_element.click()
-                page.wait_for_timeout(200)
+                page.wait_for_timeout(100)
                 input_element.fill(prompt)
-                page.wait_for_timeout(200)
+                page.wait_for_timeout(100)
                 
                 send_button = page.locator('button[aria-label*="Send"], button:has-text("Send")').first
                 if send_button.count() > 0:
@@ -813,11 +831,11 @@ def edit_image():
                 else:
                     page.keyboard.press('Enter')
                 
-                page.wait_for_timeout(1000)
+                page.wait_for_timeout(500)
                 
                 wait_for_response_complete(page)
                 
-                page.wait_for_timeout(500)
+                page.wait_for_timeout(300)
                 
                 image_selectors = [
                     'img[src*="googleusercontent.com"]',
@@ -920,7 +938,7 @@ def debug_cookies():
         browser, context = get_or_create_browser()
         with get_browser_page() as page:
             page.goto('https://gemini.google.com/app', timeout=30000)
-            page.wait_for_timeout(1500)
+            page.wait_for_timeout(500)
             
             browser_cookies = context.cookies()
             
@@ -959,10 +977,11 @@ def debug_cookies():
         }), 500
 
 if __name__ == '__main__':
-    # Start background cleanup thread (runs every 6 hours, deletes images older than 24 hours)
-    start_cleanup_thread(interval_hours=6, max_age_hours=24)
+    # Start aggressive cleanup for free tier (runs every 2 hours, deletes images older than 6 hours)
+    start_cleanup_thread(interval_hours=2, max_age_hours=6)
     
     # Run initial cleanup on startup
-    cleanup_old_images(max_age_hours=24)
+    cleanup_old_images(max_age_hours=6)
     
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    # Use production settings for free tier
+    app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)
