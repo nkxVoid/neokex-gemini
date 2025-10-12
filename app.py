@@ -739,36 +739,10 @@ def edit_image():
 
 @app.route('/', methods=['GET'])
 def home():
-    """API documentation endpoint"""
+    """API status check"""
     return jsonify({
-        'name': 'Gemini Scraper API',
-        'version': '1.0.0',
-        'endpoints': {
-            '/gemini': {
-                'method': 'GET',
-                'params': {'chat': 'Your message to Gemini'},
-                'example': '/gemini?chat=Hello, how are you?'
-            },
-            '/gimage': {
-                'method': 'GET',
-                'params': {'prompt': 'Image description'},
-                'example': '/gimage?prompt=A beautiful sunset over mountains'
-            },
-            '/gedit': {
-                'method': 'GET',
-                'params': {
-                    'imgUrl': 'URL of image to edit',
-                    'prompt': 'Edit instructions'
-                },
-                'example': '/gedit?imgUrl=https://example.com/image.jpg&prompt=Make it brighter'
-            }
-        },
-        'setup': {
-            'step1': 'Add your Gemini cookies to account.txt',
-            'step2': 'Supported formats: JSON (array of cookie objects), Netscape (tab-separated), or simple name=value (one per line)',
-            'step3': 'Important cookies: __Secure-1PSID, __Secure-1PSIDTS, __Secure-1PAPISID',
-            'json_example': '[{"name": "cookie_name", "value": "cookie_value", "domain": ".google.com", "path": "/"}]'
-        }
+        'status': 'alive',
+        'message': 'API is running'
     })
 
 @app.route('/health', methods=['GET'])
