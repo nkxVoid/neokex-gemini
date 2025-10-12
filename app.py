@@ -39,9 +39,9 @@ def load_cookies():
                                 processed_cookie['secure'] = cookie['secure']
                             
                             if 'expires' in cookie and cookie['expires']:
-                                processed_cookie['expires'] = float(cookie['expires'])
+                                processed_cookie['expires'] = float(cookie['expires'])  # type: ignore
                             elif 'expirationDate' in cookie and cookie['expirationDate']:
-                                processed_cookie['expires'] = float(cookie['expirationDate'])
+                                processed_cookie['expires'] = float(cookie['expirationDate'])  # type: ignore
                             
                             if 'httpOnly' in cookie and cookie['httpOnly']:
                                 processed_cookie['httpOnly'] = cookie['httpOnly']
@@ -89,11 +89,11 @@ def load_cookies():
                         }
                         
                         if secure:
-                            cookie['secure'] = secure
+                            cookie['secure'] = secure  # type: ignore
                         
                         if expiry and expiry != '0':
                             try:
-                                cookie['expires'] = float(expiry)
+                                cookie['expires'] = float(expiry)  # type: ignore
                             except:
                                 pass
                         
@@ -269,46 +269,95 @@ def gemini_chat():
                     raise Exception("Could not find input field. Page may have changed.")
                 
                 input_element.click()
-                page.wait_for_timeout(500)
-                input_element.fill(chat_message)
-                page.wait_for_timeout(500)
+                page.wait_for_timeout(1000)
+                input_element.type(chat_message)
+                page.wait_for_timeout(1000)
                 
-                send_button = page.locator('button[aria-label*="Send"], button:has-text("Send")').first
-                if send_button.count() > 0:
-                    send_button.click()
-                else:
-                    page.keyboard.press('Enter')
+                # Try multiple send strategies
+                send_success = False
+                try:
+                    # Strategy 1: Look for send button
+                    send_button = page.locator('button[aria-label*="Send"]').first
+                    if send_button.count() > 0:
+                        send_button.click()
+                        send_success = True
+                        logger.info("Clicked send button via aria-label")
+                except:
+                    pass
                 
-                page.wait_for_timeout(2000)
+                if not send_success:
+                    try:
+                        # Strategy 2: Press Enter
+                        page.keyboard.press('Enter')
+                        send_success = True
+                        logger.info("Sent message via Enter key")
+                    except:
+                        pass
                 
+                if not send_success:
+                    raise Exception("Could not send message")
+                
+                # Wait for response to start appearing
+                page.wait_for_timeout(3000)
+                
+                # Wait for response to complete
                 wait_for_response_complete(page)
                 
+                # Extract response with multiple selector strategies
                 response_selectors = [
                     'div[data-message-author-role="model"]',
+                    'message-content[model-turn]',
+                    'model-response',
                     'div.model-response-text',
-                    'div[class*="response"] div[class*="message-content"]'
+                    'div[class*="model"] div[class*="content"]',
+                    'div[jsname] div[class*="markdown"]'
                 ]
                 
                 response_text = None
                 for selector in response_selectors:
-                    elements = page.locator(selector).all()
-                    if elements:
-                        response_text = elements[-1].inner_text()
-                        if response_text and len(response_text.strip()) > 0:
-                            break
+                    try:
+                        elements = page.locator(selector).all()
+                        if elements:
+                            text = elements[-1].inner_text()
+                            if text and len(text.strip()) > 0:
+                                response_text = text
+                                logger.info(f"Extracted response using selector: {selector}")
+                                break
+                    except:
+                        continue
                 
-                browser.close()
+                # Fallback: try to get any new text that appeared
+                if not response_text:
+                    try:
+                        # Wait a bit more
+                        page.wait_for_timeout(2000)
+                        # Try to get the last message-like element
+                        all_text_elements = page.locator('div[class*="content"], div[class*="message"], div[jsname]').all()
+                        for elem in reversed(all_text_elements):
+                            text = elem.inner_text()
+                            if text and len(text.strip()) > 20 and text.strip() != chat_message:
+                                response_text = text
+                                logger.info("Extracted response using fallback method")
+                                break
+                    except:
+                        pass
                 
                 if response_text and len(response_text.strip()) > 0:
+                    browser.close()
                     return jsonify({
                         'status': 'success',
                         'chat': chat_message,
                         'response': response_text.strip()
                     })
                 else:
+                    # Save debug screenshot before closing browser
+                    page.screenshot(path='/tmp/gemini_no_response.png')
+                    logger.error("Could not extract response. Screenshot saved to /tmp/gemini_no_response.png")
+                    browser.close()
                     return jsonify({
                         'status': 'error',
-                        'message': 'No valid response received from Gemini'
+                        'message': 'No valid response received from Gemini',
+                        'debug': 'Screenshot saved to /tmp/gemini_no_response.png'
                     }), 500
                 
             except Exception as e:
@@ -592,7 +641,7 @@ def edit_image():
                         'prompt': prompt
                     }
                     if result_image_urls:
-                        result['edited_images'] = result_image_urls
+                        result['edited_images'] = result_image_urls  # type: ignore
                     if response_text:
                         result['response'] = response_text.strip()
                     return jsonify(result)
