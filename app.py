@@ -335,7 +335,7 @@ def get_browser_page():
     """Context manager to get a browser page from thread-local browser"""
     browser, context = get_or_create_browser()
     page = context.new_page()
-    page.set_default_timeout(60000)
+    page.set_default_timeout(30000)
     
     try:
         yield page
@@ -430,7 +430,7 @@ def wait_for_response_complete(page):
 def download_image(url):
     """Download image from URL and save to temp file"""
     try:
-        response = requests.get(url, timeout=30)
+        response = requests.get(url, timeout=15)
         response.raise_for_status()
         
         ext = url.split('.')[-1].split('?')[0] or 'jpg'
