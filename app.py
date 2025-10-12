@@ -8,9 +8,7 @@ import logging
 import uuid
 import json
 import threading
-import time
-from datetime import datetime, timedelta
-import atexit
+from datetime import datetime
 from contextlib import contextmanager
 
 os.environ['PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS'] = 'true'
@@ -26,17 +24,6 @@ logging.basicConfig(
     format='%(levelname)s: %(message)s'
 )
 logger = logging.getLogger(__name__)
-
-# Memory monitoring for debugging
-def log_memory_usage():
-    try:
-        import psutil
-        import os
-        process = psutil.Process(os.getpid())
-        mem_mb = process.memory_info().rss / 1024 / 1024
-        logger.error(f"Memory usage: {mem_mb:.1f}MB")
-    except:
-        pass
 
 # Global cookie cache for performance
 _cached_cookies = None
@@ -179,47 +166,6 @@ def load_cookies():
     _cookies_last_loaded = datetime.now()
     return cookies
 
-def cleanup_old_images(max_age_hours=24):
-    """Delete image files older than max_age_hours from static/images directory"""
-    try:
-        current_time = datetime.now()
-        deleted_count = 0
-        
-        for image_file in STATIC_IMAGES_DIR.glob('*.jpg'):
-            file_age = current_time - datetime.fromtimestamp(image_file.stat().st_mtime)
-            if file_age > timedelta(hours=max_age_hours):
-                try:
-                    image_file.unlink()
-                    deleted_count += 1
-                    logger.info(f"Deleted old image: {image_file.name} (age: {file_age})")
-                except Exception as e:
-                    logger.error(f"Failed to delete {image_file.name}: {str(e)}")
-        
-        if deleted_count > 0:
-            logger.info(f"Cleanup complete: Deleted {deleted_count} old images")
-    except Exception as e:
-        logger.error(f"Error during image cleanup: {str(e)}")
-
-def cleanup_background_task(interval_hours=6, max_age_hours=24):
-    """Background task to periodically clean up old images"""
-    while True:
-        try:
-            time.sleep(interval_hours * 3600)
-            cleanup_old_images(max_age_hours)
-        except Exception as e:
-            logger.error(f"Background cleanup task error: {str(e)}")
-
-def start_cleanup_thread(interval_hours=1, max_age_hours=3):
-    """Start background cleanup thread - very aggressive for 512MB RAM limit"""
-    cleanup_thread = threading.Thread(
-        target=cleanup_background_task,
-        args=(interval_hours, max_age_hours),
-        daemon=True
-    )
-    cleanup_thread.start()
-    # Use print instead of logger to avoid "ERROR:" prefix confusion
-    print(f"INFO: Cleanup thread started (interval: {interval_hours}h, max_age: {max_age_hours}h)", flush=True)
-
 def get_or_create_browser():
     """Get or create thread-local browser instance"""
     global _cookies_last_loaded
@@ -351,39 +297,6 @@ def get_browser_page():
             gc.collect(2)  # Full garbage collection
         except:
             pass
-
-# Register cleanup on exit
-atexit.register(close_browser)
-
-def setup_browser_context(playwright):
-    """Setup browser with cookies"""
-    browser = playwright.chromium.launch(
-        headless=True, 
-        args=[
-            '--disable-blink-features=AutomationControlled',
-            '--disable-gpu',
-            '--disable-software-rasterizer',
-            '--disable-dev-shm-usage',
-            '--no-sandbox'
-        ]
-    )
-    context = browser.new_context(
-        viewport={'width': 1920, 'height': 1080},
-        user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-    )
-    
-    cookies = load_cookies()
-    if cookies:
-        try:
-            logger.info(f"Attempting to add {len(cookies)} cookies to browser context")
-            context.add_cookies(cookies)
-            logger.info("Cookies successfully added to browser context")
-        except Exception as e:
-            logger.error(f"Error adding cookies to context: {str(e)}")
-            logger.error(f"Cookie that failed: {cookies}")
-            raise
-    
-    return browser, context
 
 def check_login_required(page):
     """Check if login is required - improved detection"""
@@ -951,12 +864,6 @@ def home():
         }
     })
 
-# Cleanup disabled on startup for faster Render deployment
-# Images will be cleaned up manually or with external cron if needed
-
 if __name__ == '__main__':
-    # Use PORT from environment (for Render) or default to 5000
     port = int(os.environ.get('PORT', 5000))
-    
-    # Use production settings for free tier
     app.run(host='0.0.0.0', port=port, debug=False, threaded=True)

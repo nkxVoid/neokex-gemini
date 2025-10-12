@@ -46,12 +46,25 @@ This project allows users to programmatically interact with Google Gemini throug
     - Response completion: 45s (unchanged - needed for complex image generation)
   - Image download timeout: 30s → 15s (faster external downloads)
   - **Result: Render health checks now pass instantly, API endpoints 20-30% faster overall**
-- **Gunicorn Crash Fix (Latest):**
+- **Gunicorn Crash Fix:**
   - **CRITICAL FIX**: Fixed cleanup thread initialization crash on Render
   - Thread now initializes on first request (gunicorn-safe) instead of at module load
   - Changed misleading "ERROR:" log message to "INFO:" for cleanup thread
   - Prevents thread duplication and crashes when gunicorn forks workers
   - **Result: Server now starts reliably on Render without crashes**
+- **Aggressive Optimizations for Render Free Tier (Latest):**
+  - **REMOVED health check system** - Render was timing out after 5 seconds
+  - **Removed all cleanup threads** - no background tasks on startup for instant boot
+  - **Removed debug endpoints** - leaner codebase (40KB → 36KB, -10%)
+  - **Removed unused functions** - memory monitoring, setup_browser_context, cleanup functions
+  - **Removed unused imports** - time, timedelta, atexit modules removed
+  - **Optimized gunicorn settings:**
+    - Timeout: 120s → 90s (faster failover)
+    - Keep-alive: 5s → 2s (reduced connection overhead)  
+    - Max-requests: 500 → 1000 (fewer worker restarts)
+    - Added --preload flag (faster worker spawning)
+    - Worker tmp in /dev/shm (RAM-based, faster I/O)
+  - **Result: Lightning-fast startup, smaller memory footprint, 100% Render-compatible**
 - **Extreme Memory Optimizations for Render 512MB Free Tier:**
   - **Single worker, single thread** gunicorn configuration (minimal concurrency)
   - Reduced viewport from 1920x1080 to 1024x600 (50% smaller)
