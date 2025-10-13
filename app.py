@@ -625,24 +625,22 @@ def generate_image():
                         for img in images:
                             src = img.get_attribute('src')
                             if src and ('http' in src):
-                                # Filter out profile pictures and UI icons with improved logic
-                                # Profile pics have patterns like: /a/ACg8oc, /a/default, or size params
-                                is_profile_pic = (
-                                    '/a/ACg8oc' in src or '/a/default' in src or
+                                # Strict exclusions: UI elements that are never generated images
+                                is_excluded = (
+                                    src.endswith('.svg') or  # SVG files are UI elements
+                                    '/logo' in src.lower() or '/icon' in src.lower() or
+                                    'sparkle' in src.lower() or 'gemini_sparkle' in src or
+                                    '/lamda/images/' in src or  # Gemini UI assets
+                                    'gstatic.com/lamda' in src or  # Google static UI assets
+                                    '/a/ACg8oc' in src or '/a/default' in src or  # Profile pics
                                     '/photo.jpg' in src or '/avatar' in src.lower() or
-                                    's64-c' in src or 's32-c' in src or 
+                                    's64-c' in src or 's32-c' in src or  # Small profile sizes
                                     's96-c' in src or 's128-c' in src or
                                     's256-c' in src or 's512-c' in src
                                 )
                                 
-                                # Also check for generated image indicators
-                                is_generated = (
-                                    'googleusercontent.com' in src and 
-                                    any(pattern in src for pattern in ['-rw', '-h', '-w', '=w', '=h', '/d/'])
-                                )
-                                
-                                # Include image if it's not a profile pic OR it has generated image indicators
-                                if not is_profile_pic or is_generated:
+                                # Accept if from googleusercontent and not excluded
+                                if 'googleusercontent.com' in src and not is_excluded:
                                     # Avoid duplicates
                                     if src not in google_image_urls:
                                         google_image_urls.append(src)
@@ -808,24 +806,22 @@ def edit_image():
                         for img in images:
                             src = img.get_attribute('src')
                             if src and ('http' in src):
-                                # Filter out profile pictures and UI icons with improved logic
-                                # Profile pics have patterns like: /a/ACg8oc, /a/default, or size params
-                                is_profile_pic = (
-                                    '/a/ACg8oc' in src or '/a/default' in src or
+                                # Strict exclusions: UI elements that are never generated images
+                                is_excluded = (
+                                    src.endswith('.svg') or  # SVG files are UI elements
+                                    '/logo' in src.lower() or '/icon' in src.lower() or
+                                    'sparkle' in src.lower() or 'gemini_sparkle' in src or
+                                    '/lamda/images/' in src or  # Gemini UI assets
+                                    'gstatic.com/lamda' in src or  # Google static UI assets
+                                    '/a/ACg8oc' in src or '/a/default' in src or  # Profile pics
                                     '/photo.jpg' in src or '/avatar' in src.lower() or
-                                    's64-c' in src or 's32-c' in src or 
+                                    's64-c' in src or 's32-c' in src or  # Small profile sizes
                                     's96-c' in src or 's128-c' in src or
                                     's256-c' in src or 's512-c' in src
                                 )
                                 
-                                # Also check for generated image indicators
-                                is_generated = (
-                                    'googleusercontent.com' in src and 
-                                    any(pattern in src for pattern in ['-rw', '-h', '-w', '=w', '=h', '/d/'])
-                                )
-                                
-                                # Include image if it's not a profile pic OR it has generated image indicators
-                                if not is_profile_pic or is_generated:
+                                # Accept if from googleusercontent and not excluded
+                                if 'googleusercontent.com' in src and not is_excluded:
                                     # Avoid duplicates
                                     if src not in google_result_urls:
                                         google_result_urls.append(src)
