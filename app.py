@@ -594,6 +594,7 @@ def generate_image():
     
     try:
         with get_browser_page() as page:
+            # Start a new chat to ensure we get the latest model (2.5 Flash)
             page.goto('https://gemini.google.com/app', timeout=30000, wait_until='domcontentloaded')
             try:
                 page.wait_for_load_state('networkidle', timeout=5000)
@@ -606,6 +607,25 @@ def generate_image():
                     'message': 'Authentication failed. Cookies may be invalid or expired.',
                     'hint': 'Please update your cookies in account.txt'
                 }), 401
+            
+            # Click on "New chat" to ensure we're using the latest/default model
+            try:
+                page.wait_for_timeout(1500)
+                new_chat_button = page.locator('button[aria-label*="New chat"], button:has-text("New chat")').first
+                if new_chat_button.count() > 0:
+                    new_chat_button.click()
+                    page.wait_for_timeout(1500)
+            except Exception as e:
+                logger.warning(f"Could not click new chat: {str(e)}")
+            
+            # Take screenshot for debugging
+            page.screenshot(path='/tmp/before_prompt.png')
+            
+            # Check what model is being used
+            model_text = page.locator('button:has-text("Flash"), div:has-text("Flash"), button:has-text("Gemini"), div:has-text("Gemini")').first
+            if model_text.count() > 0:
+                current_model = model_text.text_content()
+                logger.error(f"Current model detected: {current_model}")
             
             try:
                 input_selectors = [
@@ -621,6 +641,9 @@ def generate_image():
                         element = page.wait_for_selector(selector, timeout=8000, state='visible')
                         if element:
                             input_element = element
+                            # Log the placeholder text to see what mode we're in
+                            placeholder = element.get_attribute('placeholder')
+                            logger.error(f"Input placeholder: {placeholder}")
                             break
                     except PlaywrightTimeout:
                         continue
