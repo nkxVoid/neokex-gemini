@@ -676,24 +676,12 @@ def generate_image():
                             break
                 
                 if google_image_urls:
-                    # Download images using authenticated session and convert to base64
-                    base64_images = []
-                    for img_url in google_image_urls:
-                        base64_img = download_image_authenticated(page, img_url)
-                        if base64_img:
-                            base64_images.append(base64_img)
-                    
-                    if base64_images:
-                        return jsonify({
-                            'status': 'success',
-                            'prompt': prompt,
-                            'images': base64_images
-                        })
-                    else:
-                        return jsonify({
-                            'status': 'error',
-                            'message': 'Found images but failed to download them'
-                        }), 500
+                    # Return image URLs directly
+                    return jsonify({
+                        'status': 'success',
+                        'prompt': prompt,
+                        'images': google_image_urls
+                    })
                 else:
                     return jsonify({
                         'status': 'error',
@@ -889,15 +877,8 @@ def edit_image():
                         'prompt': prompt
                     }
                     if google_result_urls:
-                        # Download images using authenticated session and convert to base64
-                        base64_images = []
-                        for img_url_edit in google_result_urls:
-                            base64_img = download_image_authenticated(page, img_url_edit)
-                            if base64_img:
-                                base64_images.append(base64_img)
-                        
-                        if base64_images:
-                            result['edited_images'] = base64_images  # type: ignore
+                        # Return image URLs directly
+                        result['edited_images'] = google_result_urls  # type: ignore
                     if response_text:
                         result['response'] = response_text.strip()
                     return jsonify(result)
