@@ -688,7 +688,31 @@ def generate_image():
                     raise Exception("Could not find input field. Screenshot saved to /tmp/gimage_error.png")
                 
                 input_element.click()
-                # Try different prompt formats that work with Gemini image generation
+                
+                # Ensure prompt explicitly triggers image generation
+                # Check if prompt starts with image generation keywords (word boundary check)
+                import re
+                image_prefixes = [
+                    r'^generate\s+',
+                    r'^create\s+',
+                    r'^make\s+an?\s+image',
+                    r'^draw\s+',
+                    r'^show\s+me\s+',
+                    r'^(an?\s+)?image\s+of',
+                    r'^(a\s+)?picture\s+of',
+                    r'^(a\s+)?photo\s+of',
+                    r'^paint\s+',
+                    r'^design\s+',
+                    r'^illustrate\s+'
+                ]
+                
+                has_image_prefix = any(re.match(pattern, prompt.lower()) for pattern in image_prefixes)
+                
+                if not has_image_prefix:
+                    enhanced_prompt = f"Generate an image of {prompt}"
+                    logger.error(f"Enhanced prompt from '{prompt}' to '{enhanced_prompt}'")
+                    prompt = enhanced_prompt
+                
                 input_element.type(prompt, delay=0)
                 
                 send_button = page.locator('button[aria-label*="Send"], button:has-text("Send")').first
@@ -719,43 +743,72 @@ def generate_image():
                 except:
                     pass
                 
-                image_selectors = [
-                    'img[src*="googleusercontent.com"]',
-                    'img[src*="gemini"]',
-                    'img[src*="http"]'
+                # Look for images specifically in the model response area
+                response_area_selectors = [
+                    'div[data-message-author-role="model"] img',
+                    'model-response img',
+                    'message-content img'
                 ]
                 
                 google_image_urls = []
                 all_found_images = []
-                for selector in image_selectors:
+                
+                # First try to find images in response areas only
+                for selector in response_area_selectors:
                     images = page.locator(selector).all()
                     if images:
-                        # Get ALL images, not just the last one
                         for img in images:
                             src = img.get_attribute('src')
-                            if src and ('http' in src):
+                            if src and 'http' in src:
                                 all_found_images.append(src)
-                                # Strict exclusions: UI elements that are never generated images
-                                is_excluded = (
-                                    src.endswith('.svg') or  # SVG files are UI elements
+                                # Exclude UI elements and profile pictures
+                                is_ui_element = (
+                                    src.endswith('.svg') or
                                     '/logo' in src.lower() or '/icon' in src.lower() or
                                     'sparkle' in src.lower() or 'gemini_sparkle' in src or
-                                    '/lamda/images/' in src or  # Gemini UI assets
-                                    'gstatic.com/lamda' in src or  # Google static UI assets
-                                    '/a/ACg8oc' in src or '/a/default' in src or  # Profile pics
+                                    '/lamda/images/' in src or
+                                    'gstatic.com/lamda' in src or
+                                    '/a/ACg8oc' in src or '/a/default' in src or
                                     '/photo.jpg' in src or '/avatar' in src.lower() or
-                                    's64-c' in src or 's32-c' in src or  # Small profile sizes
+                                    's64-c' in src or 's32-c' in src or
                                     's96-c' in src or 's128-c' in src or
                                     's256-c' in src or 's512-c' in src
                                 )
                                 
-                                # Accept if from googleusercontent and not excluded
-                                if 'googleusercontent.com' in src and not is_excluded:
-                                    # Avoid duplicates
+                                if 'googleusercontent.com' in src and not is_ui_element:
                                     if src not in google_image_urls:
                                         google_image_urls.append(src)
                         if google_image_urls:
                             break
+                
+                # Fallback: if no images in response area, search globally with profile picture exclusions
+                if not google_image_urls:
+                    all_images = page.locator('img[src*="googleusercontent.com"]').all()
+                    for img in all_images:
+                        src = img.get_attribute('src')
+                        if src and 'http' in src:
+                            all_found_images.append(src)
+                            # Exclude known UI elements and profile pictures
+                            is_excluded = (
+                                src.endswith('.svg') or
+                                '/logo' in src.lower() or '/icon' in src.lower() or
+                                'sparkle' in src.lower() or 'gemini_sparkle' in src or
+                                '/lamda/images/' in src or
+                                'gstatic.com/lamda' in src or
+                                'gstatic.com' in src or  # Exclude all gstatic
+                                '/a/ACg8oc' in src or '/a/default' in src or  # Profile pictures
+                                '/photo.jpg' in src or '/avatar' in src.lower() or
+                                # Small profile sizes (but allow larger images)
+                                (('=s64' in src or '=s32' in src or '=s96' in src or 
+                                  's64-c' in src or 's32-c' in src or 's96-c' in src or
+                                  's128-c' in src or 's256-c' in src or 's512-c' in src) and
+                                 '/a/' in src)  # Only exclude small sizes if it's a profile (/a/)
+                            )
+                            
+                            # Accept Gemini-generated images from googleusercontent
+                            if 'googleusercontent.com' in src and not is_excluded:
+                                if src not in google_image_urls:
+                                    google_image_urls.append(src)
                 
                 # Debug logging
                 if not google_image_urls and all_found_images:
