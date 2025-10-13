@@ -5,6 +5,25 @@ This project provides a Flask-based REST API that enables programmatic interacti
 
 **Important:** This API requires Docker-based deployment (Render, Railway, Fly.io) and is NOT compatible with serverless platforms like Netlify or Vercel due to Playwright browser automation requirements.
 
+## Recent Changes
+
+*October 13, 2025 - Latest*
+- **FIXED: 403 Forbidden Error on Images** - Images now returned as base64 data URLs
+  - Downloads images using authenticated browser session (bypasses Google's access restrictions)
+  - Converts to base64 and embeds directly in JSON response
+  - No external URLs, no 403 errors, works everywhere
+  - Automatic MIME type detection (JPEG, PNG, WebP, GIF)
+  - **Result: Images are instantly accessible with zero access errors**
+- **FIXED: SVG Logo/UI Element Filtering** - Improved exclusion logic
+  - Blocks SVG files, logos, icons, sparkle images
+  - Excludes gstatic.com UI assets and profile pictures
+  - Only returns actual generated images from Gemini
+- **Memory optimizations for long-term Render deployment**
+  - Browser refresh every 50 requests
+  - Automatic cleanup at 400MB memory threshold
+  - Health monitoring endpoint with memory metrics
+  - **Result: Stable operation on Render's 512MB free tier**
+
 ## User Preferences
 - No credit card, prefers free solutions
 - Wants to scrape Gemini web interface
@@ -20,7 +39,7 @@ This project provides a Flask-based REST API that enables programmatic interacti
 - **Core Functionality**: Flask API server running on port 5000, handling three main endpoints: `/gemini` (chat), `/gimage` (image generation), and `/gedit` (image editing).
 - **Authentication**: Cookie-based authentication by reading cookies from `account.txt` and injecting them into Playwright's browser context.
 - **Browser Automation**: Utilizes Playwright with Chromium in a headless mode for web scraping.
-- **Image Handling**: Supports all image formats (PNG, JPG, WebP, GIF) with automatic format detection and returns direct Google image URLs. Filters out UI elements to return only generated images.
+- **Image Handling**: Supports all image formats (PNG, JPG, WebP, GIF) with automatic format detection. Images are downloaded using authenticated browser sessions and returned as base64 data URLs, eliminating 403 errors and storage requirements.
 - **Memory Management**: Aggressive optimizations for resource-constrained environments (e.g., Render's 512MB free tier), including:
     - Browser refresh every 50 requests per thread and automatic cleanup when memory exceeds 400MB.
     - `gc.collect(2)` on high memory events, `gc.collect(1)` per request.

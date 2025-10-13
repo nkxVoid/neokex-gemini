@@ -395,6 +395,34 @@ def download_image(url):
         logger.error(f"Failed to download image: {str(e)}")
         return None
 
+def download_image_authenticated(page, url):
+    """Download image using authenticated browser context to bypass 403 errors"""
+    try:
+        import base64
+        # Use the authenticated page context to download the image
+        response = page.request.get(url)
+        if response.status == 200:
+            image_data = response.body()
+            # Convert to base64 for embedding
+            base64_data = base64.b64encode(image_data).decode('utf-8')
+            
+            # Detect image format
+            content_type = response.headers.get('content-type', 'image/jpeg')
+            if 'png' in content_type:
+                mime = 'image/png'
+            elif 'webp' in content_type:
+                mime = 'image/webp'
+            elif 'gif' in content_type:
+                mime = 'image/gif'
+            else:
+                mime = 'image/jpeg'
+            
+            return f"data:{mime};base64,{base64_data}"
+        return None
+    except Exception as e:
+        logger.error(f"Failed to download authenticated image: {str(e)}")
+        return None
+
 @app.route('/gemini', methods=['GET'])
 def gemini_chat():
     """Chat with Gemini endpoint"""
@@ -648,11 +676,24 @@ def generate_image():
                             break
                 
                 if google_image_urls:
-                    return jsonify({
-                        'status': 'success',
-                        'prompt': prompt,
-                        'images': google_image_urls
-                    })
+                    # Download images using authenticated session and convert to base64
+                    base64_images = []
+                    for img_url in google_image_urls:
+                        base64_img = download_image_authenticated(page, img_url)
+                        if base64_img:
+                            base64_images.append(base64_img)
+                    
+                    if base64_images:
+                        return jsonify({
+                            'status': 'success',
+                            'prompt': prompt,
+                            'images': base64_images
+                        })
+                    else:
+                        return jsonify({
+                            'status': 'error',
+                            'message': 'Found images but failed to download them'
+                        }), 500
                 else:
                     return jsonify({
                         'status': 'error',
@@ -848,7 +889,15 @@ def edit_image():
                         'prompt': prompt
                     }
                     if google_result_urls:
-                        result['edited_images'] = google_result_urls  # type: ignore
+                        # Download images using authenticated session and convert to base64
+                        base64_images = []
+                        for img_url_edit in google_result_urls:
+                            base64_img = download_image_authenticated(page, img_url_edit)
+                            if base64_img:
+                                base64_images.append(base64_img)
+                        
+                        if base64_images:
+                            result['edited_images'] = base64_images  # type: ignore
                     if response_text:
                         result['response'] = response_text.strip()
                     return jsonify(result)
