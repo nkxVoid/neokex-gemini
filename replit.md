@@ -7,7 +7,26 @@ This project provides a Flask-based REST API that enables programmatic interacti
 
 ## Recent Changes
 
-*October 13, 2025 - Latest*
+*October 13, 2025 - Latest (v2)*
+- **FIXED: Image URL Accessibility & Free Tier Optimization** - Complete URL and resource management overhaul
+  - **Enhanced URL Construction**: 
+    - Fixed `get_base_url()` to prioritize `REPLIT_DEV_DOMAIN` over `REPLIT_DOMAINS`
+    - Handles multiple domain strings safely (comma/space separated)
+    - Returns correct HTTPS URLs for all deployment platforms
+  - **Image Endpoint Improvements**:
+    - Added CORS headers (`Access-Control-Allow-Origin: *`)
+    - Strong caching (`Cache-Control: public, max-age=31536000`)
+    - Cross-origin resource policy for universal access
+    - Better error handling with specific FileNotFoundError catch
+  - **Aggressive Free Tier Optimization**:
+    - Lowered memory threshold to 300MB (from 400MB) for 512MB free tier
+    - Browser refresh every 20 requests (from 50) to prevent memory buildup
+    - Context refresh every 90 seconds (from 120s) for tighter resource management
+    - Added automatic image cleanup: deletes files older than 24 hours
+    - Randomized cleanup invocation (10% chance per image download) to balance disk space
+  - **Result: Images now return valid, accessible URLs that work from any client, and server runs efficiently on free tier for extended periods**
+
+*October 13, 2025 - Previous*
 - **FIXED: Railway/Render Deployment Issues** - Enhanced for production environments
   - Increased viewport size to 1280x1024 (from 1024x600) for better image visibility
   - Extended wait times: 3s initial wait + 3x 1.5s scrolls for lazy-loaded images
@@ -25,11 +44,6 @@ This project provides a Flask-based REST API that enables programmatic interacti
   - Blocks SVG files, logos, icons, sparkle images
   - Excludes gstatic.com UI assets and profile pictures
   - Only returns actual generated images from Gemini
-- **Memory optimizations for long-term Render deployment**
-  - Browser refresh every 50 requests
-  - Automatic cleanup at 400MB memory threshold
-  - Health monitoring endpoint with memory metrics
-  - **Result: Stable operation on Render's 512MB free tier**
 
 ## User Preferences
 - No credit card, prefers free solutions
@@ -48,8 +62,10 @@ This project provides a Flask-based REST API that enables programmatic interacti
 - **Browser Automation**: Utilizes Playwright with Chromium in a headless mode for web scraping.
 - **Image Handling**: Supports all image formats (PNG, JPG, WebP, GIF) with automatic format detection. Images are downloaded using authenticated browser sessions, saved to local storage (`static/images/`), and served via the `/images/<filename>` endpoint. This eliminates 403 errors and provides clean, accessible URLs.
 - **Memory Management**: Aggressive optimizations for resource-constrained environments (e.g., Render's 512MB free tier), including:
-    - Browser refresh every 50 requests per thread and automatic cleanup when memory exceeds 400MB.
+    - Browser refresh every 20 requests per thread and automatic cleanup when memory exceeds 300MB.
+    - Context refresh every 90 seconds to prevent memory buildup.
     - `gc.collect(2)` on high memory events, `gc.collect(1)` per request.
+    - Automatic image cleanup: deletes files older than 24 hours (10% randomized invocation).
     - Ensured temp file cleanup in `/gedit` endpoint.
     - Thread-local browser instances with automatic refresh and cookie caching.
     - Optimized Gunicorn configuration for minimal resource usage.
@@ -60,7 +76,7 @@ This project provides a Flask-based REST API that enables programmatic interacti
 - **Chat Endpoint (`/gemini?chat=`)**: Interacts with Gemini for text-based conversations.
 - **Image Generation Endpoint (`/gimage?prompt=`)**: Generates images based on a given prompt. Returns full URLs to locally-stored images.
 - **Image Editing Endpoint (`/gedit?imgUrl=&prompt=`)**: Edits an existing image using a prompt. Returns full URLs to locally-stored edited images.
-- **Image Serving Endpoint (`/images/<filename>`)**: Serves downloaded images from the static directory.
+- **Image Serving Endpoint (`/images/<filename>`)**: Serves downloaded images from the static directory with CORS, caching, and cross-origin headers for universal access.
 - **Health Check Endpoint (`/health`)**: Provides memory usage, thread count, and cookie status.
 
 ### System Design Choices
