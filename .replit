@@ -4,7 +4,7 @@ expertMode = true
 
 [nix]
 channel = "stable-25_05"
-packages = ["gitFull", "playwright-driver", "xorg.libXcomposite", "xorg.libXdamage", "xorg.libXfixes", "xorg.libxcb", "libxkbcommon", "mesa", "nspr", "nss", "dbus", "atk", "at-spi2-atk", "alsa-lib", "mesa-demos", "libglvnd", "cairo", "pango", "cups", "gtk3", "libdrm", "expat", "libgbm"]
+packages = ["alsa-lib", "at-spi2-atk", "atk", "cairo", "cups", "dbus", "expat", "gitFull", "gtk3", "libdrm", "libgbm", "libglvnd", "libxkbcommon", "mesa", "mesa-demos", "nspr", "nss", "pango", "playwright-driver", "xorg.libXcomposite", "xorg.libXdamage", "xorg.libXfixes", "xorg.libxcb"]
 
 [workflows]
 runButton = "Project"
@@ -33,10 +33,6 @@ waitForPort = 5000
 [[ports]]
 localPort = 5000
 externalPort = 80
-
-[[ports]]
-localPort = 33147
-externalPort = 3001
 
 [[ports]]
 localPort = 35851

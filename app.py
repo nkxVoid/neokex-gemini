@@ -33,10 +33,13 @@ _thread_local = threading.local()
 
 def get_base_url():
     """Get the proper base URL for constructing image URLs"""
-    # Check for Replit domain first
-    replit_domain = os.environ.get('REPLIT_DOMAINS')
+    # Check for Replit domain first (prioritize REPLIT_DEV_DOMAIN over REPLIT_DOMAINS)
+    replit_domain = os.environ.get('REPLIT_DEV_DOMAIN') or os.environ.get('REPLIT_DOMAINS')
     if replit_domain:
-        return f"https://{replit_domain}"
+        # Handle multiple domains (comma or space separated) - take the first one
+        domain = replit_domain.split(',')[0].split()[0].strip()
+        if domain:
+            return f"https://{domain}"
     
     # For Render and other platforms, use the request URL with proper scheme
     # Check X-Forwarded-Proto header first (set by most reverse proxies)
@@ -192,11 +195,11 @@ def get_or_create_browser():
         _thread_local.context_created_at = None
         _thread_local.request_count = 0
     
-    # Check memory usage and force cleanup if approaching limit (400MB threshold for 512MB tier)
+    # Check memory usage and force cleanup if approaching limit (300MB threshold for 512MB free tier)
     try:
         process = psutil.Process()
         memory_mb = process.memory_info().rss / 1024 / 1024
-        if memory_mb > 400:
+        if memory_mb > 300:
             logger.warning(f"High memory usage detected: {memory_mb:.1f}MB, forcing browser cleanup")
             close_browser()
             import gc
@@ -204,18 +207,18 @@ def get_or_create_browser():
     except:
         pass
     
-    # Track request count and force refresh every 50 requests to prevent memory buildup
+    # Track request count and force refresh every 20 requests to prevent memory buildup (optimized for free tier)
     _thread_local.request_count = getattr(_thread_local, 'request_count', 0) + 1
-    if _thread_local.request_count >= 50:
-        logger.warning(f"Thread hit 50 requests, forcing browser refresh")
+    if _thread_local.request_count >= 20:
+        logger.warning(f"Thread hit 20 requests, forcing browser refresh for memory optimization")
         close_browser()
         _thread_local.request_count = 0
     
     # Check if we need to refresh cookies (cache expired)
     needs_refresh = False
     if _thread_local.context is not None and _thread_local.context_created_at is not None:
-        # If context is older than 2 minutes, refresh it (aggressive for memory)
-        if (datetime.now() - _thread_local.context_created_at).total_seconds() >= 120:
+        # If context is older than 90 seconds, refresh it (aggressive for free tier memory optimization)
+        if (datetime.now() - _thread_local.context_created_at).total_seconds() >= 90:
             logger.warning("Thread-local context expired, recreating with fresh cookies")
             needs_refresh = True
     
@@ -397,9 +400,41 @@ def download_image(url):
         logger.error(f"Failed to download image: {str(e)}")
         return None
 
+def cleanup_old_images():
+    """Delete images older than 24 hours to save disk space on free tier"""
+    try:
+        images_dir = os.path.join('static', 'images')
+        if not os.path.exists(images_dir):
+            return
+        
+        now = datetime.now().timestamp()
+        deleted_count = 0
+        
+        for filename in os.listdir(images_dir):
+            filepath = os.path.join(images_dir, filename)
+            if os.path.isfile(filepath):
+                # Check file age
+                file_age = now - os.path.getmtime(filepath)
+                if file_age > 86400:  # 24 hours in seconds
+                    try:
+                        os.unlink(filepath)
+                        deleted_count += 1
+                    except:
+                        pass
+        
+        if deleted_count > 0:
+            logger.info(f"Cleaned up {deleted_count} old images")
+    except Exception as e:
+        logger.error(f"Error cleaning up old images: {str(e)}")
+
 def download_image_authenticated(page, url):
     """Download image using authenticated browser context and save to static directory"""
     try:
+        # Periodically clean up old images (10% chance each call to avoid overhead)
+        import random
+        if random.random() < 0.1:
+            cleanup_old_images()
+        
         # Use the authenticated page context to download the image
         response = page.request.get(url)
         if response.status == 200:
@@ -1004,16 +1039,27 @@ def edit_image():
 
 @app.route('/images/<filename>')
 def serve_image(filename):
-    """Serve images from static/images directory"""
+    """Serve images from static/images directory with proper headers"""
     try:
         images_dir = os.path.join('static', 'images')
-        return send_from_directory(images_dir, filename)
-    except Exception as e:
-        logger.error(f"Failed to serve image {filename}: {str(e)}")
+        response = send_from_directory(images_dir, filename)
+        # Add headers to ensure images are accessible and cacheable
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Cache-Control'] = 'public, max-age=31536000'
+        response.headers['Cross-Origin-Resource-Policy'] = 'cross-origin'
+        return response
+    except FileNotFoundError:
+        logger.error(f"Image not found: {filename}")
         return jsonify({
             'status': 'error',
             'message': 'Image not found'
         }), 404
+    except Exception as e:
+        logger.error(f"Failed to serve image {filename}: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'message': f'Error serving image: {str(e)}'
+        }), 500
 
 @app.route('/health', methods=['GET'])
 def health():

@@ -4,3 +4,9 @@ python-dotenv
 requests
 gunicorn
 psutil
+flask
+gunicorn
+playwright
+psutil
+python-dotenv
+requests
