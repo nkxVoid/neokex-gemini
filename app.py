@@ -653,6 +653,46 @@ def generate_image():
             except Exception as e:
                 logger.warning(f"Could not click new chat: {str(e)}")
             
+            # Try to select a model that supports image generation
+            try:
+                # Look for model dropdown/selector buttons
+                model_selectors = [
+                    'button[aria-label*="model"], button[aria-label*="Model"]',
+                    'button:has-text("Flash")',
+                    'button:has-text("Gemini")',
+                    'div[role="button"]:has-text("Flash")',
+                    'div[role="button"]:has-text("Gemini")'
+                ]
+                
+                for selector in model_selectors:
+                    model_button = page.locator(selector).first
+                    if model_button.count() > 0:
+                        try:
+                            model_button.click()
+                            page.wait_for_timeout(1000)
+                            
+                            # Look for Gemini 2.0 Flash Experimental or latest model with image support
+                            image_model_options = [
+                                'div[role="menuitem"]:has-text("2.0")',
+                                'div[role="menuitem"]:has-text("Experimental")',
+                                'div[role="menuitem"]:has-text("Flash")',
+                                'button:has-text("2.0")',
+                                'button:has-text("Experimental")'
+                            ]
+                            
+                            for option_selector in image_model_options:
+                                option = page.locator(option_selector).first
+                                if option.count() > 0:
+                                    option.click()
+                                    page.wait_for_timeout(1000)
+                                    logger.error("Selected image-capable model")
+                                    break
+                            break
+                        except:
+                            continue
+            except Exception as e:
+                logger.warning(f"Could not select image model: {str(e)}")
+            
             # Take screenshot for debugging
             page.screenshot(path='/tmp/before_prompt.png')
             
@@ -709,9 +749,12 @@ def generate_image():
                 has_image_prefix = any(re.match(pattern, prompt.lower()) for pattern in image_prefixes)
                 
                 if not has_image_prefix:
-                    enhanced_prompt = f"Generate an image of {prompt}"
+                    # Use very explicit image generation language
+                    enhanced_prompt = f"Create an image showing {prompt}"
                     logger.error(f"Enhanced prompt from '{prompt}' to '{enhanced_prompt}'")
                     prompt = enhanced_prompt
+                else:
+                    logger.error(f"Prompt already has image prefix: '{prompt}'")
                 
                 input_element.type(prompt, delay=0)
                 
