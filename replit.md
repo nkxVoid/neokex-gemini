@@ -7,7 +7,18 @@ This project provides a Flask-based REST API that enables programmatic interacti
 
 ## Recent Changes
 
-*October 13, 2025 - Latest (v2)*
+*October 13, 2025 - Latest (v3)*
+- **FIXED: Image Generation Prompt Enhancement** - Automatic prompt optimization for reliable image generation
+  - **Smart Prompt Detection**: Uses regex with word boundaries to detect if prompt needs enhancement
+  - **Automatic Enhancement**: Prompts like "a cat" or "makeup concept art" are enhanced to "Generate an image of..."
+  - **Edge Case Handling**: Correctly handles prompts with "make", "create" in middle of words (e.g., "makeup" won't false-match)
+  - **Improved Image Filtering**: 
+    - Prioritizes images from model response area first
+    - Relaxed filtering to accept all Gemini-generated images (not just those with size parameters)
+    - Only excludes UI elements (SVGs, logos, icons) and small profile pictures (with `/a/` path)
+  - **Result: All prompts now trigger image generation correctly, and valid generated images are captured**
+
+*October 13, 2025 - Previous (v2)*
 - **FIXED: Image URL Accessibility & Free Tier Optimization** - Complete URL and resource management overhaul
   - **Enhanced URL Construction**: 
     - Fixed `get_base_url()` to prioritize `REPLIT_DEV_DOMAIN` over `REPLIT_DOMAINS`
