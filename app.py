@@ -630,7 +630,8 @@ def generate_image():
                     raise Exception("Could not find input field. Screenshot saved to /tmp/gimage_error.png")
                 
                 input_element.click()
-                input_element.type(f"Generate an image: {prompt}", delay=0)
+                # Try different prompt formats that work with Gemini image generation
+                input_element.type(prompt, delay=0)
                 
                 send_button = page.locator('button[aria-label*="Send"], button:has-text("Send")').first
                 if send_button.count() > 0:
