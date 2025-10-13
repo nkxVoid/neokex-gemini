@@ -8,12 +8,13 @@ This project provides a Flask-based REST API that enables programmatic interacti
 ## Recent Changes
 
 *October 13, 2025 - Latest*
-- **FIXED: 403 Forbidden Error on Images** - Images now returned as base64 data URLs
+- **FIXED: Image URLs Now Accessible** - Images saved locally and served via API
   - Downloads images using authenticated browser session (bypasses Google's access restrictions)
-  - Converts to base64 and embeds directly in JSON response
-  - No external URLs, no 403 errors, works everywhere
-  - Automatic MIME type detection (JPEG, PNG, WebP, GIF)
-  - **Result: Images are instantly accessible with zero access errors**
+  - Saves images to `static/images/` directory with unique filenames
+  - Returns full URLs (e.g., `https://your-domain.com/images/abc123_xyz.jpg`)
+  - New `/images/<filename>` endpoint serves the downloaded images
+  - Automatic MIME type detection and file extension (JPEG, PNG, WebP, GIF)
+  - **Result: Clean, accessible image URLs that work from any client**
 - **FIXED: SVG Logo/UI Element Filtering** - Improved exclusion logic
   - Blocks SVG files, logos, icons, sparkle images
   - Excludes gstatic.com UI assets and profile pictures
@@ -39,7 +40,7 @@ This project provides a Flask-based REST API that enables programmatic interacti
 - **Core Functionality**: Flask API server running on port 5000, handling three main endpoints: `/gemini` (chat), `/gimage` (image generation), and `/gedit` (image editing).
 - **Authentication**: Cookie-based authentication by reading cookies from `account.txt` and injecting them into Playwright's browser context.
 - **Browser Automation**: Utilizes Playwright with Chromium in a headless mode for web scraping.
-- **Image Handling**: Supports all image formats (PNG, JPG, WebP, GIF) with automatic format detection. Images are downloaded using authenticated browser sessions and returned as base64 data URLs, eliminating 403 errors and storage requirements.
+- **Image Handling**: Supports all image formats (PNG, JPG, WebP, GIF) with automatic format detection. Images are downloaded using authenticated browser sessions, saved to local storage (`static/images/`), and served via the `/images/<filename>` endpoint. This eliminates 403 errors and provides clean, accessible URLs.
 - **Memory Management**: Aggressive optimizations for resource-constrained environments (e.g., Render's 512MB free tier), including:
     - Browser refresh every 50 requests per thread and automatic cleanup when memory exceeds 400MB.
     - `gc.collect(2)` on high memory events, `gc.collect(1)` per request.
@@ -51,8 +52,9 @@ This project provides a Flask-based REST API that enables programmatic interacti
 
 ### Feature Specifications
 - **Chat Endpoint (`/gemini?chat=`)**: Interacts with Gemini for text-based conversations.
-- **Image Generation Endpoint (`/gimage?prompt=`)**: Generates images based on a given prompt.
-- **Image Editing Endpoint (`/gedit?imgUrl=&prompt=`)**: Edits an existing image using a prompt.
+- **Image Generation Endpoint (`/gimage?prompt=`)**: Generates images based on a given prompt. Returns full URLs to locally-stored images.
+- **Image Editing Endpoint (`/gedit?imgUrl=&prompt=`)**: Edits an existing image using a prompt. Returns full URLs to locally-stored edited images.
+- **Image Serving Endpoint (`/images/<filename>`)**: Serves downloaded images from the static directory.
 - **Health Check Endpoint (`/health`)**: Provides memory usage, thread count, and cookie status.
 
 ### System Design Choices

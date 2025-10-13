@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 import os
 import requests
@@ -9,6 +9,8 @@ import threading
 import psutil
 from datetime import datetime
 from contextlib import contextmanager
+import uuid
+import hashlib
 
 os.environ['PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS'] = 'true'
 
@@ -396,28 +398,40 @@ def download_image(url):
         return None
 
 def download_image_authenticated(page, url):
-    """Download image using authenticated browser context to bypass 403 errors"""
+    """Download image using authenticated browser context and save to static directory"""
     try:
-        import base64
         # Use the authenticated page context to download the image
         response = page.request.get(url)
         if response.status == 200:
             image_data = response.body()
-            # Convert to base64 for embedding
-            base64_data = base64.b64encode(image_data).decode('utf-8')
             
             # Detect image format
             content_type = response.headers.get('content-type', 'image/jpeg')
             if 'png' in content_type:
-                mime = 'image/png'
+                ext = 'png'
             elif 'webp' in content_type:
-                mime = 'image/webp'
+                ext = 'webp'
             elif 'gif' in content_type:
-                mime = 'image/gif'
+                ext = 'gif'
             else:
-                mime = 'image/jpeg'
+                ext = 'jpg'
             
-            return f"data:{mime};base64,{base64_data}"
+            # Create static/images directory if it doesn't exist
+            images_dir = os.path.join('static', 'images')
+            os.makedirs(images_dir, exist_ok=True)
+            
+            # Generate unique filename using hash of URL and timestamp
+            url_hash = hashlib.md5(url.encode()).hexdigest()[:8]
+            unique_id = str(uuid.uuid4())[:8]
+            filename = f"{url_hash}_{unique_id}.{ext}"
+            filepath = os.path.join(images_dir, filename)
+            
+            # Save image to disk
+            with open(filepath, 'wb') as f:
+                f.write(image_data)
+            
+            # Return relative URL path
+            return f"/images/{filename}"
         return None
     except Exception as e:
         logger.error(f"Failed to download authenticated image: {str(e)}")
@@ -676,12 +690,28 @@ def generate_image():
                             break
                 
                 if google_image_urls:
-                    # Return image URLs directly
-                    return jsonify({
-                        'status': 'success',
-                        'prompt': prompt,
-                        'images': google_image_urls
-                    })
+                    # Download images and save to static directory
+                    local_image_urls = []
+                    base_url = get_base_url()
+                    
+                    for img_url in google_image_urls:
+                        local_path = download_image_authenticated(page, img_url)
+                        if local_path:
+                            # Construct full URL
+                            full_url = f"{base_url}{local_path}"
+                            local_image_urls.append(full_url)
+                    
+                    if local_image_urls:
+                        return jsonify({
+                            'status': 'success',
+                            'prompt': prompt,
+                            'images': local_image_urls
+                        })
+                    else:
+                        return jsonify({
+                            'status': 'error',
+                            'message': 'Found images but failed to download them'
+                        }), 500
                 else:
                     return jsonify({
                         'status': 'error',
@@ -877,8 +907,19 @@ def edit_image():
                         'prompt': prompt
                     }
                     if google_result_urls:
-                        # Return image URLs directly
-                        result['edited_images'] = google_result_urls  # type: ignore
+                        # Download images and save to static directory
+                        local_edited_urls = []
+                        base_url = get_base_url()
+                        
+                        for img_url_edit in google_result_urls:
+                            local_path = download_image_authenticated(page, img_url_edit)
+                            if local_path:
+                                # Construct full URL
+                                full_url = f"{base_url}{local_path}"
+                                local_edited_urls.append(full_url)
+                        
+                        if local_edited_urls:
+                            result['edited_images'] = local_edited_urls  # type: ignore
                     if response_text:
                         result['response'] = response_text.strip()
                     return jsonify(result)
@@ -908,6 +949,19 @@ def edit_image():
                 os.unlink(image_file)
             except:
                 pass
+
+@app.route('/images/<filename>')
+def serve_image(filename):
+    """Serve images from static/images directory"""
+    try:
+        images_dir = os.path.join('static', 'images')
+        return send_from_directory(images_dir, filename)
+    except Exception as e:
+        logger.error(f"Failed to serve image {filename}: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'message': 'Image not found'
+        }), 404
 
 @app.route('/health', methods=['GET'])
 def health():
