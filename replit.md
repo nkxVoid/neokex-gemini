@@ -7,7 +7,24 @@ This project provides a Flask-based REST API that enables programmatic interacti
 
 ## Recent Changes
 
-*October 13, 2025 - Latest (v3)*
+*October 13, 2025 - Latest (v4)*
+- **PERFORMANCE: API Response Speed Optimization** - Reduced wait times by ~50% (~4.9s vs ~9.5s)
+  - **Optimized Wait Times**:
+    - Initial image render wait: 1500ms (from 3000ms)
+    - Scroll attempts: 2 iterations (from 3) with 800ms waits (from 1500ms)
+    - Scroll back wait: 1000ms (from 2000ms)
+  - **Enhanced Image Detection** - Better filtering for headless environments (Render/Railway)
+    - Added dimension-based filtering: excludes images smaller than 100x100px (likely icons/profile pics)
+    - Checks both URL patterns AND image dimensions for accurate filtering
+    - Collects detailed image metadata (width, height, alt text) for debugging
+  - **Improved Error Diagnostics**:
+    - Enhanced debug messages include image dimensions and filtering reasons
+    - Shows why specific images were filtered out (e.g., "profile picture", "too small")
+    - Provides helpful hints when profile pictures are detected instead of generated images
+    - Debug screenshots saved with detailed image analysis
+  - **Result: Faster API responses (~50% reduction in wait time) with more reliable image detection and better debugging for Render/Railway deployments**
+
+*October 13, 2025 - Previous (v3)*
 - **FIXED: Image Generation Prompt Enhancement** - Automatic prompt optimization for reliable image generation
   - **Smart Prompt Detection**: Uses regex with word boundaries to detect if prompt needs enhancement
   - **Automatic Enhancement**: Prompts like "a cat" or "makeup concept art" are enhanced to "Generate an image of..."

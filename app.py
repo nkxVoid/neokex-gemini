@@ -723,23 +723,23 @@ def generate_image():
                 
                 wait_for_response_complete(page)
                 
-                # Wait longer for images to render (crucial for Railway/Render deployments)
-                page.wait_for_timeout(3000)
+                # Optimized wait for images to render (reduced from 3000ms to 1500ms)
+                page.wait_for_timeout(1500)
                 
-                # Scroll down to ensure all images are loaded (especially important for Railway/Render)
+                # Scroll down to ensure all images are loaded (optimized for speed)
                 try:
-                    # Multiple scroll attempts to trigger lazy loading
-                    for _ in range(3):
+                    # Optimized scroll attempts - reduced waits for faster response
+                    for _ in range(2):
                         page.evaluate("""() => {
                             window.scrollTo(0, document.body.scrollHeight);
                         }""")
-                        page.wait_for_timeout(1500)
+                        page.wait_for_timeout(800)
                     
                     # Scroll back to top
                     page.evaluate("""() => {
                         window.scrollTo(0, 0);
                     }""")
-                    page.wait_for_timeout(2000)
+                    page.wait_for_timeout(1000)
                 except:
                     pass
                 
@@ -752,6 +752,7 @@ def generate_image():
                 
                 google_image_urls = []
                 all_found_images = []
+                all_image_details = []
                 
                 # First try to find images in response areas only
                 for selector in response_area_selectors:
@@ -760,7 +761,24 @@ def generate_image():
                         for img in images:
                             src = img.get_attribute('src')
                             if src and 'http' in src:
+                                # Get image dimensions to help distinguish generated images from profile pics
+                                try:
+                                    width = img.evaluate('el => el.naturalWidth || el.width')
+                                    height = img.evaluate('el => el.naturalHeight || el.height')
+                                    alt_text = img.get_attribute('alt') or ''
+                                except:
+                                    width = 0
+                                    height = 0
+                                    alt_text = ''
+                                
                                 all_found_images.append(src)
+                                all_image_details.append({
+                                    'src': src,
+                                    'width': width,
+                                    'height': height,
+                                    'alt': alt_text
+                                })
+                                
                                 # Exclude UI elements and profile pictures
                                 is_ui_element = (
                                     src.endswith('.svg') or
@@ -775,7 +793,10 @@ def generate_image():
                                     's256-c' in src or 's512-c' in src
                                 )
                                 
-                                if 'googleusercontent.com' in src and not is_ui_element:
+                                # Also exclude very small images (likely icons/profile pics)
+                                is_too_small = width > 0 and height > 0 and (width < 100 or height < 100)
+                                
+                                if 'googleusercontent.com' in src and not is_ui_element and not is_too_small:
                                     if src not in google_image_urls:
                                         google_image_urls.append(src)
                         if google_image_urls:
@@ -787,7 +808,22 @@ def generate_image():
                     for img in all_images:
                         src = img.get_attribute('src')
                         if src and 'http' in src:
+                            # Get dimensions for fallback images too
+                            try:
+                                width = img.evaluate('el => el.naturalWidth || el.width')
+                                height = img.evaluate('el => el.naturalHeight || el.height')
+                            except:
+                                width = 0
+                                height = 0
+                            
                             all_found_images.append(src)
+                            all_image_details.append({
+                                'src': src,
+                                'width': width,
+                                'height': height,
+                                'alt': img.get_attribute('alt') or ''
+                            })
+                            
                             # Exclude known UI elements and profile pictures
                             is_excluded = (
                                 src.endswith('.svg') or
@@ -805,14 +841,20 @@ def generate_image():
                                  '/a/' in src)  # Only exclude small sizes if it's a profile (/a/)
                             )
                             
+                            # Also check dimensions in fallback
+                            is_too_small = width > 0 and height > 0 and (width < 100 or height < 100)
+                            
                             # Accept Gemini-generated images from googleusercontent
-                            if 'googleusercontent.com' in src and not is_excluded:
+                            if 'googleusercontent.com' in src and not is_excluded and not is_too_small:
                                 if src not in google_image_urls:
                                     google_image_urls.append(src)
                 
-                # Debug logging
-                if not google_image_urls and all_found_images:
-                    logger.error(f"Found {len(all_found_images)} images but all were filtered. First image: {all_found_images[0][:100]}")
+                # Enhanced debug logging with image details
+                if not google_image_urls and all_image_details:
+                    debug_details = []
+                    for detail in all_image_details[:3]:  # Show first 3 images
+                        debug_details.append(f"URL: {detail['src'][:60]}... Size: {detail['width']}x{detail['height']}")
+                    logger.error(f"Found {len(all_image_details)} images but all were filtered: {'; '.join(debug_details)}")
                 
                 if google_image_urls:
                     # Download images and save to static directory
@@ -840,15 +882,33 @@ def generate_image():
                 else:
                     # Take screenshot for debugging
                     page.screenshot(path='/tmp/no_images_debug.png')
-                    debug_info = f"No images found after filtering. Total images seen: {len(all_found_images)}"
-                    if all_found_images:
-                        debug_info += f". First URL: {all_found_images[0][:80]}"
+                    
+                    # Build detailed debug info
+                    debug_info = f"No valid images found. Total images seen: {len(all_image_details)}"
+                    if all_image_details:
+                        # Include details about why images were filtered
+                        detail = all_image_details[0]
+                        debug_info += f". First image: {detail['src'][:60]}... ({detail['width']}x{detail['height']})"
+                        
+                        # Check if first image is a profile picture
+                        if '/a/ACg8oc' in detail['src'] or '/a/default' in detail['src']:
+                            debug_info += " [profile picture - filtered out]"
+                        elif detail['width'] > 0 and detail['height'] > 0 and (detail['width'] < 100 or detail['height'] < 100):
+                            debug_info += " [too small - likely icon/profile]"
+                    
                     logger.error(debug_info)
+                    
+                    # Provide helpful error message
+                    error_msg = 'No images generated. '
+                    if all_image_details and '/a/' in all_image_details[0]['src']:
+                        error_msg += 'Gemini may have shown profile pictures instead of generating images. Try a more explicit prompt like "Create an image showing a beautiful sunset over mountains".'
+                    else:
+                        error_msg += 'Try a more specific prompt like "Generate an image of a sunset" or check if Gemini supports image generation in your region.'
                     
                     return jsonify({
                         'status': 'error',
-                        'message': 'No images generated. Try a more specific prompt like "Generate an image of a sunset" or check if Gemini supports image generation in your region.',
-                        'debug': debug_info if all_found_images else 'No images found on page'
+                        'message': error_msg,
+                        'debug': debug_info if all_image_details else 'No images found on page'
                     }), 500
                     
             except Exception as e:
@@ -971,23 +1031,23 @@ def edit_image():
                 
                 wait_for_response_complete(page)
                 
-                # Wait longer for images to render (crucial for Railway/Render deployments)
-                page.wait_for_timeout(3000)
+                # Optimized wait for images to render (reduced from 3000ms to 1500ms)
+                page.wait_for_timeout(1500)
                 
-                # Scroll down to ensure all images are loaded (especially important for Railway/Render)
+                # Scroll down to ensure all images are loaded (optimized for speed)
                 try:
-                    # Multiple scroll attempts to trigger lazy loading
-                    for _ in range(3):
+                    # Optimized scroll attempts - reduced waits for faster response
+                    for _ in range(2):
                         page.evaluate("""() => {
                             window.scrollTo(0, document.body.scrollHeight);
                         }""")
-                        page.wait_for_timeout(1500)
+                        page.wait_for_timeout(800)
                     
                     # Scroll back to top
                     page.evaluate("""() => {
                         window.scrollTo(0, 0);
                     }""")
-                    page.wait_for_timeout(2000)
+                    page.wait_for_timeout(1000)
                 except:
                     pass
                 
@@ -998,6 +1058,8 @@ def edit_image():
                 ]
                 
                 google_result_urls = []
+                all_edit_image_details = []
+                
                 for selector in image_selectors:
                     images = page.locator(selector).all()
                     if images:
@@ -1005,6 +1067,20 @@ def edit_image():
                         for img in images:
                             src = img.get_attribute('src')
                             if src and ('http' in src):
+                                # Get image dimensions to distinguish generated images from profile pics
+                                try:
+                                    width = img.evaluate('el => el.naturalWidth || el.width')
+                                    height = img.evaluate('el => el.naturalHeight || el.height')
+                                except:
+                                    width = 0
+                                    height = 0
+                                
+                                all_edit_image_details.append({
+                                    'src': src,
+                                    'width': width,
+                                    'height': height
+                                })
+                                
                                 # Strict exclusions: UI elements that are never generated images
                                 is_excluded = (
                                     src.endswith('.svg') or  # SVG files are UI elements
@@ -1019,8 +1095,11 @@ def edit_image():
                                     's256-c' in src or 's512-c' in src
                                 )
                                 
+                                # Also exclude very small images (likely icons/profile pics)
+                                is_too_small = width > 0 and height > 0 and (width < 100 or height < 100)
+                                
                                 # Accept if from googleusercontent and not excluded
-                                if 'googleusercontent.com' in src and not is_excluded:
+                                if 'googleusercontent.com' in src and not is_excluded and not is_too_small:
                                     # Avoid duplicates
                                     if src not in google_result_urls:
                                         google_result_urls.append(src)
@@ -1064,9 +1143,21 @@ def edit_image():
                         result['response'] = response_text.strip()
                     return jsonify(result)
                 else:
+                    # Enhanced debug info for image edit failures
+                    page.screenshot(path='/tmp/gedit_no_images_debug.png')
+                    debug_info = f"No valid edited images found. Total images seen: {len(all_edit_image_details)}"
+                    if all_edit_image_details:
+                        detail = all_edit_image_details[0]
+                        debug_info += f". First image: {detail['src'][:60]}... ({detail['width']}x{detail['height']})"
+                        if '/a/' in detail['src']:
+                            debug_info += " [profile picture - filtered out]"
+                    
+                    logger.error(debug_info)
+                    
                     return jsonify({
                         'status': 'error',
-                        'message': 'No edited images or response received from Gemini'
+                        'message': 'No edited images or response received from Gemini',
+                        'debug': debug_info if all_edit_image_details else 'No images found'
                     }), 500
                     
             except Exception as e:
