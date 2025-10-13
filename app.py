@@ -660,6 +660,7 @@ def generate_image():
                 ]
                 
                 google_image_urls = []
+                all_found_images = []
                 for selector in image_selectors:
                     images = page.locator(selector).all()
                     if images:
@@ -667,6 +668,7 @@ def generate_image():
                         for img in images:
                             src = img.get_attribute('src')
                             if src and ('http' in src):
+                                all_found_images.append(src)
                                 # Strict exclusions: UI elements that are never generated images
                                 is_excluded = (
                                     src.endswith('.svg') or  # SVG files are UI elements
@@ -688,6 +690,10 @@ def generate_image():
                                         google_image_urls.append(src)
                         if google_image_urls:
                             break
+                
+                # Debug logging
+                if not google_image_urls and all_found_images:
+                    logger.error(f"Found {len(all_found_images)} images but all were filtered. First image: {all_found_images[0][:100]}")
                 
                 if google_image_urls:
                     # Download images and save to static directory
@@ -713,9 +719,17 @@ def generate_image():
                             'message': 'Found images but failed to download them'
                         }), 500
                 else:
+                    # Take screenshot for debugging
+                    page.screenshot(path='/tmp/no_images_debug.png')
+                    debug_info = f"No images found after filtering. Total images seen: {len(all_found_images)}"
+                    if all_found_images:
+                        debug_info += f". First URL: {all_found_images[0][:80]}"
+                    logger.error(debug_info)
+                    
                     return jsonify({
                         'status': 'error',
-                        'message': 'No images generated. Gemini may not support image generation in this session.'
+                        'message': 'No images generated. Try a more specific prompt like "Generate an image of a sunset" or check if Gemini supports image generation in your region.',
+                        'debug': debug_info if all_found_images else 'No images found on page'
                     }), 500
                     
             except Exception as e:
