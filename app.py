@@ -273,7 +273,7 @@ def get_or_create_browser():
     # Create new context with fresh cookies if needed
     if _thread_local.context is None:
         _thread_local.context = _thread_local.browser.new_context(
-            viewport={'width': 1024, 'height': 600},
+            viewport={'width': 1280, 'height': 1024},
             user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             java_script_enabled=True,
             bypass_csp=True,
@@ -640,16 +640,23 @@ def generate_image():
                 
                 wait_for_response_complete(page)
                 
-                # Scroll down to ensure all images are loaded (especially important for small viewports on Render)
+                # Wait longer for images to render (crucial for Railway/Render deployments)
+                page.wait_for_timeout(3000)
+                
+                # Scroll down to ensure all images are loaded (especially important for Railway/Render)
                 try:
-                    page.evaluate("""() => {
-                        window.scrollTo(0, document.body.scrollHeight);
-                    }""")
-                    page.wait_for_timeout(2000)  # Wait 2 seconds for lazy-loaded images
+                    # Multiple scroll attempts to trigger lazy loading
+                    for _ in range(3):
+                        page.evaluate("""() => {
+                            window.scrollTo(0, document.body.scrollHeight);
+                        }""")
+                        page.wait_for_timeout(1500)
+                    
+                    # Scroll back to top
                     page.evaluate("""() => {
                         window.scrollTo(0, 0);
                     }""")
-                    page.wait_for_timeout(1000)  # Wait after scrolling back up
+                    page.wait_for_timeout(2000)
                 except:
                     pass
                 
@@ -852,16 +859,23 @@ def edit_image():
                 
                 wait_for_response_complete(page)
                 
-                # Scroll down to ensure all images are loaded (especially important for small viewports on Render)
+                # Wait longer for images to render (crucial for Railway/Render deployments)
+                page.wait_for_timeout(3000)
+                
+                # Scroll down to ensure all images are loaded (especially important for Railway/Render)
                 try:
-                    page.evaluate("""() => {
-                        window.scrollTo(0, document.body.scrollHeight);
-                    }""")
-                    page.wait_for_timeout(2000)  # Wait 2 seconds for lazy-loaded images
+                    # Multiple scroll attempts to trigger lazy loading
+                    for _ in range(3):
+                        page.evaluate("""() => {
+                            window.scrollTo(0, document.body.scrollHeight);
+                        }""")
+                        page.wait_for_timeout(1500)
+                    
+                    # Scroll back to top
                     page.evaluate("""() => {
                         window.scrollTo(0, 0);
                     }""")
-                    page.wait_for_timeout(1000)  # Wait after scrolling back up
+                    page.wait_for_timeout(2000)
                 except:
                     pass
                 

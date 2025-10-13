@@ -8,6 +8,12 @@ This project provides a Flask-based REST API that enables programmatic interacti
 ## Recent Changes
 
 *October 13, 2025 - Latest*
+- **FIXED: Railway/Render Deployment Issues** - Enhanced for production environments
+  - Increased viewport size to 1280x1024 (from 1024x600) for better image visibility
+  - Extended wait times: 3s initial wait + 3x 1.5s scrolls for lazy-loaded images
+  - Multiple scroll attempts to ensure all images load in headless environments
+  - Debug logging shows which images were found/filtered for troubleshooting
+  - **Result: Images now generate reliably on Railway/Render free tiers**
 - **FIXED: Image URLs Now Accessible** - Images saved locally and served via API
   - Downloads images using authenticated browser session (bypasses Google's access restrictions)
   - Saves images to `static/images/` directory with unique filenames
