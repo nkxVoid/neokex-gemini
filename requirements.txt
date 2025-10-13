@@ -3,3 +3,4 @@ playwright
 python-dotenv
 requests
 gunicorn
+psutil

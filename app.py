@@ -6,6 +6,7 @@ import tempfile
 import logging
 import json
 import threading
+import psutil
 from datetime import datetime
 from contextlib import contextmanager
 
@@ -187,6 +188,26 @@ def get_or_create_browser():
         _thread_local.browser = None
         _thread_local.context = None
         _thread_local.context_created_at = None
+        _thread_local.request_count = 0
+    
+    # Check memory usage and force cleanup if approaching limit (400MB threshold for 512MB tier)
+    try:
+        process = psutil.Process()
+        memory_mb = process.memory_info().rss / 1024 / 1024
+        if memory_mb > 400:
+            logger.warning(f"High memory usage detected: {memory_mb:.1f}MB, forcing browser cleanup")
+            close_browser()
+            import gc
+            gc.collect(2)  # Full garbage collection on high memory
+    except:
+        pass
+    
+    # Track request count and force refresh every 50 requests to prevent memory buildup
+    _thread_local.request_count = getattr(_thread_local, 'request_count', 0) + 1
+    if _thread_local.request_count >= 50:
+        logger.warning(f"Thread hit 50 requests, forcing browser refresh")
+        close_browser()
+        _thread_local.request_count = 0
     
     # Check if we need to refresh cookies (cache expired)
     needs_refresh = False
@@ -290,6 +311,9 @@ def close_browser():
             pass
         _thread_local.playwright = None
     
+    # Reset request count
+    _thread_local.request_count = 0
+    
     logger.info("Thread-local browser instance closed")
 
 @contextmanager
@@ -309,7 +333,7 @@ def get_browser_page():
         # Aggressive cleanup for 512MB RAM limit
         try:
             import gc
-            gc.collect(2)  # Full garbage collection
+            gc.collect(1)  # Light garbage collection (changed from 2 to 1 for faster execution)
         except:
             pass
 
@@ -601,12 +625,24 @@ def generate_image():
                         for img in images:
                             src = img.get_attribute('src')
                             if src and ('http' in src):
-                                # Filter out profile pictures and UI icons
-                                # Profile pics have patterns like: /a/ACg8oc... or size params like s64-c
-                                if ('/a/ACg8oc' not in src and '/a/default' not in src and 
-                                    's64-c' not in src and 's32-c' not in src and 
-                                    's96-c' not in src and 's128-c' not in src and
-                                    's256-c' not in src and 's512-c' not in src):
+                                # Filter out profile pictures and UI icons with improved logic
+                                # Profile pics have patterns like: /a/ACg8oc, /a/default, or size params
+                                is_profile_pic = (
+                                    '/a/ACg8oc' in src or '/a/default' in src or
+                                    '/photo.jpg' in src or '/avatar' in src.lower() or
+                                    's64-c' in src or 's32-c' in src or 
+                                    's96-c' in src or 's128-c' in src or
+                                    's256-c' in src or 's512-c' in src
+                                )
+                                
+                                # Also check for generated image indicators
+                                is_generated = (
+                                    'googleusercontent.com' in src and 
+                                    any(pattern in src for pattern in ['-rw', '-h', '-w', '=w', '=h', '/d/'])
+                                )
+                                
+                                # Include image if it's not a profile pic OR it has generated image indicators
+                                if not is_profile_pic or is_generated:
                                     # Avoid duplicates
                                     if src not in google_image_urls:
                                         google_image_urls.append(src)
@@ -658,6 +694,7 @@ def edit_image():
             'message': 'Failed to download image from provided URL'
         }), 400
     
+    # Ensure temp file is always cleaned up
     try:
         with get_browser_page() as page:
             page.goto('https://gemini.google.com/app', timeout=30000, wait_until='domcontentloaded')
@@ -771,12 +808,24 @@ def edit_image():
                         for img in images:
                             src = img.get_attribute('src')
                             if src and ('http' in src):
-                                # Filter out profile pictures and UI icons
-                                # Profile pics have patterns like: /a/ACg8oc... or size params like s64-c
-                                if ('/a/ACg8oc' not in src and '/a/default' not in src and 
-                                    's64-c' not in src and 's32-c' not in src and 
-                                    's96-c' not in src and 's128-c' not in src and
-                                    's256-c' not in src and 's512-c' not in src):
+                                # Filter out profile pictures and UI icons with improved logic
+                                # Profile pics have patterns like: /a/ACg8oc, /a/default, or size params
+                                is_profile_pic = (
+                                    '/a/ACg8oc' in src or '/a/default' in src or
+                                    '/photo.jpg' in src or '/avatar' in src.lower() or
+                                    's64-c' in src or 's32-c' in src or 
+                                    's96-c' in src or 's128-c' in src or
+                                    's256-c' in src or 's512-c' in src
+                                )
+                                
+                                # Also check for generated image indicators
+                                is_generated = (
+                                    'googleusercontent.com' in src and 
+                                    any(pattern in src for pattern in ['-rw', '-h', '-w', '=w', '=h', '/d/'])
+                                )
+                                
+                                # Include image if it's not a profile pic OR it has generated image indicators
+                                if not is_profile_pic or is_generated:
                                     # Avoid duplicates
                                     if src not in google_result_urls:
                                         google_result_urls.append(src)
@@ -796,8 +845,6 @@ def edit_image():
                         if response_text and len(response_text.strip()) > 0:
                             break
                 
-                os.unlink(image_file)
-                
                 if google_result_urls or response_text:
                     result = {
                         'status': 'success',
@@ -816,7 +863,6 @@ def edit_image():
                     }), 500
                     
             except Exception as e:
-                os.unlink(image_file)
                 logger.error(f"Image editing error: {str(e)}")
                 return jsonify({
                     'status': 'error',
@@ -824,12 +870,38 @@ def edit_image():
                 }), 500
                 
     except Exception as e:
-        if image_file and os.path.exists(image_file):
-            os.unlink(image_file)
         logger.error(f"Browser error: {str(e)}")
         return jsonify({
             'status': 'error',
             'message': f'Browser automation failed: {str(e)}'
+        }), 500
+    finally:
+        # Always clean up temp file
+        if image_file and os.path.exists(image_file):
+            try:
+                os.unlink(image_file)
+            except:
+                pass
+
+@app.route('/health', methods=['GET'])
+def health():
+    """Health check with memory monitoring"""
+    try:
+        process = psutil.Process()
+        memory_info = process.memory_info()
+        memory_mb = memory_info.rss / 1024 / 1024
+        
+        return jsonify({
+            'status': 'healthy',
+            'memory_usage_mb': round(memory_mb, 2),
+            'memory_percent': round(process.memory_percent(), 2),
+            'thread_count': threading.active_count(),
+            'cookies_loaded': _cached_cookies is not None
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
         }), 500
 
 @app.route('/', methods=['GET'])
@@ -838,6 +910,7 @@ def home():
     return jsonify({
         'status': 'running',
         'endpoints': {
+            '/health': 'Health check with memory monitoring',
             '/gemini': 'Chat with Gemini - GET /gemini?chat=your_message',
             '/gimage': 'Generate images - GET /gimage?prompt=image_description',
             '/gedit': 'Edit images - GET /gedit?imgUrl=image_url&prompt=edit_instructions'

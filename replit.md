@@ -15,6 +15,31 @@ This project allows users to programmatically interact with Google Gemini throug
 - ⚠️ User needs to add their Gemini cookies to account.txt
 
 ## Recent Changes
+*October 13, 2025*
+- **Critical Memory & Image URL Fixes for Render Deployment:**
+  - **FIXED: Improved image URL filtering** - Better detection of generated images vs profile avatars
+    - Added additional avatar patterns: `/photo.jpg`, `/avatar` in URL
+    - Added generated image indicators: `-rw`, `-h`, `-w`, `=w`, `=h`, `/d/` patterns
+    - More precise filtering logic that checks for both exclusion and inclusion patterns
+    - **Result: Generated images now properly identified and returned, avatars filtered out**
+  - **FIXED: Memory leak from temp files** - /gedit endpoint now guarantees temp file cleanup
+    - Added `finally` block to ensure temp files always deleted even on errors
+    - Prevents disk space and memory buildup from orphaned temp files
+  - **FIXED: Browser instance memory buildup** - Added automatic cleanup mechanisms
+    - Browser refresh every 50 requests per thread to prevent memory accumulation
+    - Automatic browser cleanup when memory exceeds 400MB (80% of 512MB limit)
+    - Full garbage collection (gc.collect(2)) triggered on high memory events
+    - Request count tracking per thread with automatic reset on cleanup
+  - **NEW: Memory monitoring endpoint** - Added /health endpoint with metrics
+    - Shows current memory usage in MB and percentage
+    - Displays active thread count for debugging
+    - Reports cookie loading status
+    - **Result: Easy monitoring and debugging of memory issues on Render**
+  - **OPTIMIZED: Lighter garbage collection** - Changed from gc.collect(2) to gc.collect(1)
+    - Faster per-request cleanup while still maintaining memory management
+    - Full gc.collect(2) only triggered on high memory or browser refresh events
+  - **Result: API server now suitable for long-term operation on Render's 512MB tier**
+
 *October 12, 2025*
 - **Direct Google URLs - No Local Storage (Latest):**
   - **MAJOR FIX**: API now returns Google image URLs directly (no local download/storage)
@@ -169,7 +194,7 @@ This project allows users to programmatically interact with Google Gemini throug
 ### API Endpoints
 
 1. **GET /** - API documentation
-2. **GET /health** - Health check and cookie status
+2. **GET /health** - Health check with memory monitoring (shows memory usage, thread count, cookies status)
 3. **GET /gemini?chat=** - Chat with Gemini
 4. **GET /gimage?prompt=** - Generate images
 5. **GET /gedit?imgUrl=&prompt=** - Edit images
@@ -252,10 +277,12 @@ This project allows users to programmatically interact with Google Gemini throug
 ## Dependencies
 
 ### Python Packages
-- flask==3.1.2
-- playwright==1.55.0
-- requests==2.32.5
-- python-dotenv==1.1.1
+- flask
+- playwright
+- requests
+- python-dotenv
+- gunicorn
+- psutil (for memory monitoring)
 
 ### System Requirements
 - Playwright Chromium browser installed
